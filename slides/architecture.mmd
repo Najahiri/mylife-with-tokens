@@ -1,0 +1,58 @@
+%%{init: {"theme": "base", "flowchart": {"htmlLabels": false, "curve": "basis", "nodeSpacing": 40, "rankSpacing": 55}, "themeCSS": "svg text, svg tspan, .nodeLabel { font-family: Inter, sans-serif !important; } .edgeLabel rect, .labelBkg { fill: #0A0B10 !important; opacity: 1 !important; } .edgeLabel text, .edgeLabel tspan { fill: #FF6A72 !important; font-family: DejaVu Sans Mono, monospace; font-size: 12px; } .cluster-label text, .cluster-label tspan { fill: #E5323B !important; font-family: DejaVu Sans Mono, monospace; font-weight: bold; letter-spacing: 2px; }", "themeVariables": {
+  "background": "transparent",
+  "fontFamily": "Liberation Sans, DejaVu Sans, sans-serif",
+  "fontSize": "15px",
+  "primaryColor": "#151925",
+  "primaryTextColor": "#F2F3F7",
+  "primaryBorderColor": "#4FD1FF",
+  "lineColor": "#8A90A2",
+  "secondaryColor": "#1B1F2C",
+  "tertiaryColor": "#10131B",
+  "clusterBkg": "#0F121A",
+  "clusterBorder": "#2A3042",
+  "edgeLabelBackground": "#0A0B10",
+  "titleColor": "#F2F3F7"
+}}}%%
+flowchart LR
+    subgraph IN["01 · INGEST"]
+        direction TB
+        A1[(PDF / DOCX)] --> A3{{Parser}}
+        A2[(Web / API)] --> A3
+        A3 --> A4[Semantic<br/>Chunker]
+        A4 --> A5[Metadata<br/>Enrichment]
+    end
+
+    subgraph IDX["02 · INDEX"]
+        direction TB
+        B1[Dense<br/>Embeddings] --> B2[(Vector Store)]
+        B3[BM25<br/>Sparse Index] --> B4[(Keyword Store)]
+        B2 --> B5{{Fusion<br/>Layer}}
+        B4 --> B5
+    end
+
+    subgraph RET["03 · RETRIEVE"]
+        direction TB
+        C1([User Query]) --> C2[Query<br/>Rewriter]
+        C2 --> C3{Hybrid<br/>Search}
+        C3 --> C4[Cross-Encoder<br/>Re-ranker]
+    end
+
+    subgraph GEN["04 · GENERATE"]
+        direction TB
+        D1[[Apertus LLM]] --> D2[Citation<br/>Checker]
+        D2 -->|grounded| D3([Answer + Sources])
+        D2 -.->|retry| D1
+        D3 -.->|feedback| E1[(Eval Logs)]
+    end
+
+    IN ==>|chunks| IDX
+    IDX ==>|top-k| RET
+    RET ==>|context| GEN
+
+    classDef red fill:#2A0E12,stroke:#E5323B,stroke-width:2px,color:#FFFFFF;
+    classDef cyan fill:#0E1E28,stroke:#4FD1FF,stroke-width:2px,color:#FFFFFF;
+    classDef store fill:#151925,stroke:#8A90A2,stroke-width:1.5px,color:#F2F3F7;
+    class D1,C3 red;
+    class C1,D3 cyan;
+    class A1,A2,B2,B4,E1 store;
+    linkStyle default stroke:#5B6278,stroke-width:1.6px;
