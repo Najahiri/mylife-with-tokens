@@ -1,0 +1,53 @@
+# Model and data
+model_id: swiss-ai/Apertus-v1.5-8B-base
+dataset_repo: jaredpalmer/kev-suites
+dataset_config: null
+dataset_data_files:
+  train: v7/decision-v7/train.jsonl
+  dev: v7/decision-v7/development.jsonl
+  test: v7/decision-v7/test.jsonl
+hub_model_id: HX-Tfd/Apertus-1.5-8B-Decision  # Required: HF user/repo_id to push weights.
+output_dir: ./jevpertus_checkpoints
+
+# CUDA index on the machine running this script (after CUDA_VISIBLE_DEVICES).
+# On HF Jobs, rent hardware with the launcher's --flavor; gpu_id selects within it.
+gpu_id: 0
+
+# Used by launch_hf.py to rent the remote machine. gpu_id selects within it.
+# "cpu-basic"|"cpu-upgrade"|"cpu-performance"|"cpu-xl"|"sprx8"|"zero-a10g"|"t4-small"|"t4-medium"|
+# "l4x1"|"l4x4"|"l40sx1"|"l40sx4"|"l40sx8"|"a10g-small"|"a10g-large"|"a10g-largex2"|"a10g-largex4"|
+# "a100-large"|"a100x4"|"a100x8"|"h200"|"h200x2"|"h200x4"|"h200x8"|"rtx-pro-6000"|"rtx-pro-6000x2"|
+# "rtx-pro-6000x4"|"rtx-pro-6000x8"|"inf2x6" * at flavor
+hf_job:
+  flavor: a100-large # a100-large # [l4, a10g-small, a100-large, h200]
+  timeout: 4h
+  image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
+  namespace: null  # Set an organization name here to bill that organization.
+
+# Training hyperparameters
+batch_size: 8
+gradient_accumulation_steps: 4
+epochs: 2
+lr: 5.0e-5
+head_lr: 1.0e-4
+max_length: 2048
+seed: 42
+
+# Local dataset checks: stream only a few rows from each split, then exit.
+dry_run: false
+dry_run_samples: 16
+dry_run_tokenize: true
+
+# Experiment tracking
+wandb_project: apertus-jevpertus-finetune
+wandb_eval_examples: 50  # Per dev/test evaluation; set to 0 to disable example tables.
+
+hydra:
+  job:
+    # Keep checkpoints and W&B artifacts separate for every run/sweep job.
+    # Relative output_dir overrides are relative to this job's directory.
+    chdir: true
+  sweeper:
+    # Optional YAML sweep ranges; CLI ranges override these when using --multirun.
+    # Example: params: {lr: "5.0e-5,1.0e-4", seed: "42,43"}
+    params: {}
