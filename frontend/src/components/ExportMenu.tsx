@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type ExportFormat = "pptx" | "pdf";
 
@@ -10,8 +11,9 @@ const OPTIONS: { format: ExportFormat; label: string; hint: string }[] = [
 ];
 
 /** "Export" button with a small menu to pick the file format. */
-export function ExportMenu({ disabled, pending, onExport }: {
+export function ExportMenu({ disabled, pending, onExport, up }: {
   disabled: boolean;
+  up?: boolean;             // open the menu above the button
   pending: boolean;
   onExport: (format: ExportFormat) => void;
 }) {
@@ -33,13 +35,16 @@ export function ExportMenu({ disabled, pending, onExport }: {
 
   return (
     <div ref={box} className="relative">
-      <Button size="sm" onClick={() => setOpen((o) => !o)} disabled={disabled || pending}
+      <Button size="sm" onClick={() => setOpen((o) => !o)} disabled={disabled || pending} className="shadow-lg"
               aria-haspopup="menu" aria-expanded={open}>
-        {pending ? <Loader2 className="animate-spin" /> : <Download />} Export <ChevronDown />
+        {pending ? <Loader2 className="animate-spin" /> : <Download />} Export
+        <ChevronDown className={cn("transition-transform duration-200", (open !== !!up) && "rotate-180")} />
       </Button>
       {open && (
         <div role="menu"
-             className="animate-zoom absolute top-full right-0 z-20 mt-2 flex w-64 origin-top-right flex-col rounded-2xl border border-secondary/15 bg-background p-1.5 shadow-lg">
+             className={cn("animate-zoom absolute right-0 z-20 flex w-64 flex-col rounded-2xl",
+                           up ? "bottom-full mb-2 origin-bottom-right" : "top-full mt-2 origin-top-right",
+                           " border border-secondary/15 bg-background p-1.5 shadow-lg")}>
           {OPTIONS.map((o) => (
             <button key={o.format} type="button" role="menuitem"
                     onClick={() => { setOpen(false); onExport(o.format); }}

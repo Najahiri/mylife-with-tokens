@@ -140,7 +140,7 @@ export function ChatPage() {
       {/* conversation */}
       <section className="flex min-h-[32rem] min-w-0 flex-1 flex-col gap-4 lg:min-h-0 lg:pr-4">
         <h1 className="sr-only">Chat with the agent</h1>
-        <div className="flex items-end gap-2">
+        <div className="flex h-12 shrink-0 items-end gap-2 border-b border-secondary/15 pb-2">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>
@@ -151,7 +151,7 @@ export function ChatPage() {
           </Button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-secondary/15 pt-4 pr-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!events.length && (
             <div className="flex max-w-prose flex-col gap-3">
               <p className="text-xl leading-snug font-semibold text-secondary">

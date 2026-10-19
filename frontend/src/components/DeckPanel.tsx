@@ -65,15 +65,10 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
     tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-primary");
 
   return (
-    <aside className="flex h-full flex-col gap-4 lg:min-h-0">
+    <aside className="relative flex h-full flex-col gap-4 lg:min-h-0">
       <h2 className="sr-only">Presentation</h2>
-      <div className="flex items-end gap-4">
-        <div className="ml-auto">
-          <ExportMenu disabled={!items.length} pending={exporting.isPending} onExport={(f) => exporting.mutate(f)} />
-        </div>
-      </div>
 
-      <div className="flex gap-5 border-b border-secondary/15">
+      <div className="flex h-12 shrink-0 items-end gap-5 border-b border-secondary/15 [&>button]:-mb-px">
         <button type="button" className={tabClass("slides")} onClick={() => setTab("slides")}>
           Slides {slides.length > 0 && `· ${slides.length}`}
         </button>
@@ -84,7 +79,7 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
       <ErrorNote error={preview.error || exporting.error} />
 
       {/* key: the tab's content fades in when switching */}
-      <div key={tab} className="animate-fade flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      <div key={tab} className="animate-fade flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1 pb-16">
         {tab === "slides" && (
           <>
             {!items.length && (
@@ -152,6 +147,12 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
           </>
         )}
       </div>
+      {/* floats over the slides, bottom right */}
+      {items.length > 0 && (
+        <div className="animate-fade absolute right-4 bottom-4 z-10">
+          <ExportMenu up disabled={!items.length} pending={exporting.isPending} onExport={(f) => exporting.mutate(f)} />
+        </div>
+      )}
       {viewing !== null && slides.length > 0 && (
         <SlideViewer request={request} preview={slides} index={Math.min(viewing, slides.length - 1)}
                      itemOf={itemOf} locked={locked} onRemove={onRemove}
