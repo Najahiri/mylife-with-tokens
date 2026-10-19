@@ -11,6 +11,7 @@ import json
 import re
 import sqlite3
 import threading
+import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -19,6 +20,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from indexing import index as indexer
+from indexing.update import UpdateJob
 from rag_model import agent
 from rag_model import presentation
 from rag_model import config
@@ -36,7 +39,6 @@ busy: dict[str, threading.Lock] = {}
 async def lifespan(_: FastAPI):
     # after a fresh clone only index.sqlite is there (download, see README): build the vector store from its vectors
     if not (ROOT / "data" / "qdrant").exists() and (ROOT / "data" / "index.sqlite").exists():
-        from indexing import index as indexer
         print("data/qdrant is missing: loading the vectors from data/index.sqlite (a few minutes, once)", flush=True)
         indexer.load()
     state["searcher"] = Searcher()
@@ -149,11 +151,22 @@ def remove_items(sid: str, body: RemoveIn):
     return sessions[sid].view()
 
 
+@app.post("/api/agent/{sid}/stop")
+def stop_message(sid: str):
+    """Stop button: the running answer ends after the current streamed chunk; nothing else runs."""
+    if sid not in sessions:
+        raise HTTPException(404, "conversation not found")
+    sessions[sid].stop.set()
+    return {"stopped": busy[sid].locked()}
+
+
 @app.post("/api/agent/{sid}/messages")
 def send_message(sid: str, body: MessageIn):
     """One chat message; streams the agent's steps as server-sent events until it answers."""
     if sid not in sessions:
         raise HTTPException(404, "conversation not found (the API was restarted?)")
+    if state.get("switching") or "searcher" not in state:
+        raise HTTPException(503, "The search index is being switched to the new version; try again in a few seconds.")
     lock = busy[sid]
     if not lock.acquire(blocking=False):
         raise HTTPException(409, "the agent is still working on the previous message")
@@ -272,6 +285,70 @@ def reset_config(section: str | None = None):
 @app.post("/api/settings/test")
 def test():
     return {"results": test_connection(verbose=False, roles=("agent",))}   # the UI only uses the agent
+
+
+# ---------- search index: status and update ----------
+class UpdateIn(BaseModel):
+    refetch: bool = False   # fetch every page again, not only new ones (takes hours)
+
+
+def switch_index(new_db, new_qdrant, progress):
+    """Make a freshly built index live without a restart: wait for running agent turns, close the current index,
+    move the new one in place (the current one is kept as *.old) and open it."""
+    state["switching"] = True            # new chat messages wait
+    try:
+        while any(lock.locked() for lock in busy.values()):
+            progress(0.1, "Waiting until the agent has answered …")
+            time.sleep(1)
+        progress(0.4, "Closing the current index …")
+        old = state.pop("searcher", None)
+        if old:
+            old.close()
+        indexer.activate(new_db, new_qdrant)
+        progress(0.7, "Opening the new index …")
+        state["searcher"] = Searcher()
+        state["searcher"].embed("warm up")
+        progress(1.0, "The new index is live.")
+    finally:
+        if "searcher" not in state:      # something went wrong: open whatever is live now
+            try:
+                state["searcher"] = Searcher()
+            except Exception as e:
+                print(f"could not open the index: {e!r}")
+        state["switching"] = False
+
+
+def _index_stats() -> dict:
+    live = ROOT / "data" / "index.sqlite"
+    if not live.exists():
+        return {"pages": 0, "chunks": 0, "built": None}
+    with sqlite3.connect(f"file:{live}?mode=ro", uri=True) as db:
+        pages, chunks = (db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("pages", "chunks"))
+    return {"pages": pages, "chunks": chunks, "built": live.stat().st_mtime}
+
+
+@app.get("/api/index")
+def index_status():
+    job = state.get("job")
+    return {**_index_stats(), "job": job.view() if job else None}
+
+
+@app.post("/api/index/update")
+def start_update(body: UpdateIn):
+    job = state.get("job")
+    if job and job.running:
+        raise HTTPException(409, "an update is already running")
+    state["job"] = UpdateJob(body.refetch, switch_index).start()
+    return {**_index_stats(), "job": state["job"].view()}
+
+
+@app.post("/api/index/update/cancel")
+def cancel_update():
+    job = state.get("job")
+    if not job or not job.running:
+        raise HTTPException(409, "no update is running")
+    job.cancel()
+    return {**_index_stats(), "job": job.view()}
 
 
 @app.get("/api/health")

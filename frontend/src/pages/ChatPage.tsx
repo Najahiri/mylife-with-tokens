@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Presentation, Repeat, Search, Send, Sparkles, Square, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
@@ -121,6 +121,10 @@ export function ChatPage() {
     if (sid) saveTimer.current = setTimeout(() => { api.saveDeck(sid, next).catch(setError); }, 400);
   }
 
+  function stop() {
+    if (sid) api.stopChat(sid).catch(setError);
+  }
+
   /** Switch to a saved conversation: its steps, slides and settings; the presentation is open if it has slides. */
   async function openConversation(id: string) {
     if (running || id === sid) return;
@@ -200,6 +204,7 @@ export function ChatPage() {
             if (e.type === "done") return <p key={i} className="text-[11px] text-muted-foreground">answered in {Math.round(e.took_s)} s</p>;
             if (e.type === "error") return <ErrorNote key={i} error={new Error(e.message)} />;
             if (e.type === "note") return <StepRow key={i} icon={<Trash2 />} label={e.text} />;
+            if (e.type === "stopped") return <StepRow key={i} icon={<Square />} label="Stopped" meta="what was added so far stays" />;
             return null;
           })}
           {running && (
@@ -211,7 +216,7 @@ export function ChatPage() {
         </div>
 
         <ErrorNote error={error} />
-        <Composer value={draft} onChange={setDraft} onSend={send} running={running}
+        <Composer value={draft} onChange={setDraft} onSend={send} onStop={stop} running={running}
                   placeholder={events.length ? "Ask for changes or more partners …" : "Describe the company, e.g. wearable glucose sensors for diabetes care"} />
       </section>
 
@@ -223,8 +228,8 @@ export function ChatPage() {
 }
 
 /** One line by default, grows with the text up to a few lines; Enter sends, Shift+Enter makes a new line. */
-function Composer({ value, onChange, onSend, running, placeholder }: {
-  value: string; onChange: (v: string) => void; onSend: () => void; running: boolean; placeholder: string;
+function Composer({ value, onChange, onSend, onStop, running, placeholder }: {
+  value: string; onChange: (v: string) => void; onSend: () => void; onStop: () => void; running: boolean; placeholder: string;
 }) {
   const field = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -240,9 +245,16 @@ function Composer({ value, onChange, onSend, running, placeholder }: {
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
                 placeholder={placeholder} aria-label="Message to the agent"
                 className="max-h-[200px] min-w-0 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-6 outline-none" />
-      <Button type="submit" size="icon" disabled={running || !value.trim()} aria-label="Send" title="Send (Enter)">
-        {running ? <Loader2 className="animate-spin" /> : <Send />}
-      </Button>
+      {/* while the agent works the button stops it */}
+      {running ? (
+        <Button type="button" size="icon" onClick={onStop} aria-label="Stop" title="Stop the agent">
+          <Square className="fill-current" />
+        </Button>
+      ) : (
+        <Button type="submit" size="icon" disabled={!value.trim()} aria-label="Send" title="Send (Enter)">
+          <Send />
+        </Button>
+      )}
     </form>
   );
 }

@@ -45,8 +45,8 @@ class Page:
 class Searcher:
     def __init__(self):
         emb = config.load()["embedding"]
-        store = QdrantDocumentStore(path=str(ROOT / "data" / "qdrant"), index=collection_name(emb["model"]),
-                                    embedding_dim=emb["dim"], similarity="cosine")
+        self.store = store = QdrantDocumentStore(path=str(ROOT / "data" / "qdrant"), index=collection_name(emb["model"]),
+                                                 embedding_dim=emb["dim"], similarity="cosine")
         self.text_embedder = SentenceTransformersTextEmbedder(
             model=emb["model"], prefix=emb.get("query_prefix", ""), normalize_embeddings=True, progress_bar=False)
         self.pipe = Pipeline()
@@ -54,6 +54,11 @@ class Searcher:
         self.pipe.add_component("retrieve", QdrantEmbeddingRetriever(document_store=store, return_embedding=True))
         self.pipe.connect("embed.embedding", "retrieve.query_embedding")
         self.joiner = DocumentJoiner(join_mode="reciprocal_rank_fusion")
+
+    def close(self) -> None:
+        """Release the index folder (Qdrant local mode allows one client per folder), e.g. before switching it."""
+        if self.store._client is not None:
+            self.store._client.close()
 
     def embed(self, text: str) -> np.ndarray:
         self.text_embedder.warm_up()

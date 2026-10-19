@@ -45,9 +45,11 @@ def public_settings() -> dict:
     return {**s, "key_set": bool(key), "key_last4": key[-4:] if key else ""}
 
 
-def generator(role: str, llm_cfg: dict, schema: dict | None = None, tools: list | None = None) -> OpenAIChatGenerator:
+def generator(role: str, llm_cfg: dict, schema: dict | None = None, tools: list | None = None,
+              on_chunk=None) -> OpenAIChatGenerator:
     """schema: JSON schema of the expected answer; used when the response format setting is json_schema.
-    tools: Haystack tools the model may call; the answer is then free text or tool calls, no response format."""
+    tools: Haystack tools the model may call; the answer is then free text or tool calls, no response format.
+    on_chunk: called for every streamed chunk; raising there stops the answer (used for the stop button)."""
     s = load_settings()
     model = s.get(f"model_{role}") or s.get("model_agent")
     missing = [k for k, v in (("base_url", s.get("base_url")), ("api_key", s.get("api_key")), ("model_agent", model)) if not v]
@@ -65,7 +67,7 @@ def generator(role: str, llm_cfg: dict, schema: dict | None = None, tools: list 
     elif fmt in ("json_object", "json_schema"):
         kwargs["response_format"] = {"type": "json_object"}
     # Streaming keeps data flowing while the model writes, so gateways with short timeouts do not cut long answers.
-    stream = (lambda chunk: None) if llm_cfg.get("stream", True) else None
+    stream = (on_chunk or (lambda chunk: None)) if llm_cfg.get("stream", True) else None
     return OpenAIChatGenerator(api_key=Secret.from_token(s["api_key"]), model=model,
                                api_base_url=s["base_url"], generation_kwargs=kwargs, streaming_callback=stream, tools=tools,
                                timeout=llm_cfg.get("timeout", 300), max_retries=llm_cfg.get("max_retries", 2))

@@ -4,6 +4,7 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { api } from "@/api/client";
 import type { LlmSettings } from "@/api/types";
 import { ConfigGroupForm } from "@/components/ConfigGroupForm";
+import { IndexUpdateCard } from "@/components/IndexUpdateCard";
 import { SettingsCard, SettingsField, settingsInput } from "@/components/SettingsCard";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,8 @@ export function SettingsPage() {
   if (settings.isError || config.isError)
     return <div className="pt-10"><ErrorNote error={settings.error || config.error} /></div>;
 
-  const sections = [{ id: "api", title: "Apertus access" }, ...config.data.groups.map((g) => ({ id: g.section, title: g.title }))];
+  const sections = [{ id: "api", title: "Apertus access" }, { id: "index", title: "Search index" },
+                    ...config.data.groups.map((g) => ({ id: g.section, title: g.title }))];
 
   return (
     // the cards are centred on the page; the section links float in the free margin to their left (wide screens)
@@ -39,6 +41,7 @@ export function SettingsPage() {
         </nav>
         <div className="flex min-w-0 flex-col gap-6">
           <ApiAccess llm={settings.data.llm} />
+          <IndexUpdateCard />
           {config.data.groups.map((g) => (
             // the key remounts a group with fresh values after saving or resetting
             <ConfigGroupForm key={`${g.section}-${JSON.stringify(g.fields.map((f) => f.value))}`} group={g} />

@@ -140,8 +140,29 @@ export type AgentEvent =
   | { type: "items"; items: Item[]; dropped: Dropped[] }
   | { type: "done"; took_s: number; trace: string }
   | { type: "note"; text: string }
+  | { type: "stopped" }
   | { type: "deck"; deck: Deck }
   | { type: "error"; message: string };
+
+export interface IndexJob {
+  state: "running" | "done" | "cancelled" | "error";
+  stage: string;
+  share: number;            // of the current stage, 0 … 1
+  detail: string;
+  stages: { key: string; label: string; status: "pending" | "running" | "done" | "cancelled" | "error" }[];
+  started: number;
+  finished: number | null;
+  error: string | null;
+  summary: Record<string, number>;
+  refetch: boolean;
+}
+
+export interface IndexStatus {
+  pages: number;
+  chunks: number;
+  built: number | null;     // seconds since 1970
+  job: IndexJob | null;
+}
 
 export interface SessionSummary {
   id: string;

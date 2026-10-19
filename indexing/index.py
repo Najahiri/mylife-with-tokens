@@ -106,7 +106,19 @@ def iter_crawled_pages(websites: dict[str, str]):
         })
 
 
-def prepare():
+class Cancelled(Exception):
+    pass
+
+
+def _report(progress, share: float, detail: str, stop=None):
+    if stop and stop():
+        raise Cancelled()
+    if progress:
+        progress(share, detail)
+
+
+def prepare(progress=None, stop=None):
+    """progress(share 0…1, detail), stop() -> bool: optional, for the update job in the API."""
     websites = {s["name"]: s.get("label") or s.get("desc") or s["name"]
                 for s in yaml.safe_load(SOURCES.read_text())["sources"]}
     INDEX_DB.unlink(missing_ok=True)
@@ -114,6 +126,8 @@ def prepare():
     out.executescript(SCHEMA)
 
     t0 = time.time()
+    with sqlite3.connect(f"file:{CRAWL_DB}?mode=ro", uri=True) as crawl:
+        total = crawl.execute("SELECT count(*) FROM pages WHERE status = 200 AND html IS NOT NULL").fetchone()[0] or 1
     convert = build_convert_pipeline()
     converted, batch = [], []
     for stream in iter_crawled_pages(websites):
@@ -122,9 +136,11 @@ def prepare():
             converted += convert.run({"convert": {"sources": batch}})["convert"]["documents"]
             batch = []
             print(f"  converted {len(converted)} · {time.time() - t0:.0f}s", flush=True)
+            _report(progress, 0.8 * len(converted) / total, f"{len(converted):,} of {total:,} pages converted", stop)
     if batch:
         converted += convert.run({"convert": {"sources": batch}})["convert"]["documents"]
 
+    _report(progress, 0.82, "removing menus and duplicates, splitting into chunks", stop)
     cfg = CONFIG["prepare"]
     boilerplate, page_filter = BoilerplateRemover(**cfg["boilerplate"]), PageFilter(min_words=cfg["min_words"])
     result = build_prepare_pipeline(boilerplate, page_filter).run(
@@ -149,8 +165,29 @@ def prepare():
           f"boilerplate {boilerplate.stats} · filter {page_filter.stats} · {time.time() - t0:.0f}s")
 
 
-def load():
-    """A4.2: write the vectors from index.sqlite (computed by indexing/embed.py) into Qdrant."""
+def load(progress=None, stop=None):
+    """A4.2: write the vectors from index.sqlite (computed by indexing/embed.py) into Qdrant.
+
+    Qdrant in local mode commits every single point; on a disk that means one sync per chunk and half an hour for
+    the whole index. So the store is built in memory (/dev/shm, if there is one) and moved into place at the end."""
+    import shutil
+    import tempfile
+    shm = Path("/dev/shm")
+    target = QDRANT_PATH
+    build = Path(tempfile.mkdtemp(prefix="raglette-qdrant-", dir=shm)) if shm.is_dir() else target
+    try:
+        _load_into(build, progress, stop)
+        if build != target:
+            _report(progress, 0.97, "moving the vector store into place", stop)
+            shutil.rmtree(target, ignore_errors=True)
+            shutil.move(str(build), target)
+    finally:
+        if build != target:
+            shutil.rmtree(build, ignore_errors=True)
+    print(f"done: the vector store is at {target}")
+
+
+def _load_into(path: Path, progress=None, stop=None):
     import numpy as np
     from haystack.components.writers import DocumentWriter
     from haystack.document_stores.types import DuplicatePolicy
@@ -168,7 +205,7 @@ def load():
         print(f"warning: only {len(rows)} of {total} chunks have vectors for {model}")
 
     dim = len(np.frombuffer(rows[0][3], dtype=np.float32))
-    store = QdrantDocumentStore(path=str(QDRANT_PATH), index=collection_name(model), embedding_dim=dim,
+    store = QdrantDocumentStore(path=str(path), index=collection_name(model), embedding_dim=dim,
                                 similarity="cosine", recreate_index=True)
     writer = DocumentWriter(document_store=store, policy=DuplicatePolicy.OVERWRITE)
     keep = ("page_id", "url", "source", "website", "title", "language", "crawled_at")
@@ -180,7 +217,10 @@ def load():
                                  embedding=np.frombuffer(vec, dtype=np.float32).tolist()))
         writer.run(documents=docs)
         print(f"  {i + len(docs)}/{len(rows)}", flush=True)
-    print(f"done: {len(rows)} chunks ({dim} dims) in collection {collection_name(model)} at {QDRANT_PATH}")
+        _report(progress, 0.95 * (i + len(docs)) / len(rows), f"{i + len(docs):,} of {len(rows):,} chunks loaded", stop)
+    if store._client is not None:   # local mode allows one client per folder, even within one process
+        store._client.close()
+    print(f"{len(rows)} chunks ({dim} dims) in collection {collection_name(model)}")
 
 
 def activate(new_db: Path, new_qdrant: Path):

@@ -2,18 +2,9 @@ import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
+import { relative } from "@/lib/time";
 import { useDismiss } from "@/lib/useDismiss";
 import { cn } from "@/lib/utils";
-
-const ago = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-function relative(seconds: number) {
-  const diff = seconds - Date.now() / 1000;
-  for (const [unit, size] of [["day", 86400], ["hour", 3600], ["minute", 60]] as const) {
-    if (Math.abs(diff) >= size) return ago.format(Math.round(diff / size), unit);
-  }
-  return "just now";
-}
 
 /** The current conversation's name; opens a menu to start a new one or go back to an earlier one. */
 export function ConversationMenu({ current, title, disabled, onNew, onOpen, onDeleted }: {

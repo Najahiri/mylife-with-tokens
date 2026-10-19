@@ -83,8 +83,11 @@ async def fetch_sitemap_urls(client, url, seen=None, depth=0):
 
 
 class Crawler:
-    def __init__(self, db, client, max_pages):
-        self.db, self.client, self.max_pages = db, client, max_pages
+    def __init__(self, db, client, max_pages, stop=None):
+        """stop: optional callable; when it returns True the crawl ends after the current page."""
+        self.db, self.client, self.max_pages, self.stop = db, client, max_pages, stop
+        self.fetched = 0           # pages fetched in this run
+        self.finished = set()      # sources that are done
 
     def add(self, url, source, depth):
         self.db.execute("INSERT OR IGNORE INTO frontier(url, source, depth) VALUES (?,?,?)", (url, source, depth))
@@ -117,7 +120,7 @@ class Crawler:
                     self.add(u, name, 1)
         self.db.commit()
 
-        while self.count_done(name) < cap:
+        while self.count_done(name) < cap and not (self.stop and self.stop()):
             row = self.db.execute(
                 "SELECT url, depth FROM frontier WHERE source=? AND state='todo' ORDER BY depth LIMIT 1", (name,)
             ).fetchone()
@@ -153,7 +156,9 @@ class Crawler:
                 print(f"[{name}] {url}: {e!r}")
             self.db.execute("UPDATE frontier SET state=? WHERE url=?", (state, url))
             self.db.commit()
+            self.fetched += 1
             await asyncio.sleep(max(0, DELAY - (time.monotonic() - t0)))
+        self.finished.add(name)
         print(f"[{name}] finished: {self.count_done(name)} fetched")
 
 

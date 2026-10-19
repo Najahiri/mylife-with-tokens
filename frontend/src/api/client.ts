@@ -1,5 +1,5 @@
 import type {
-  AgentEvent, AgentSession, ConfigGroup, Deck, SessionSummary, Health, Item, LlmSettings, SearchOptions, Source, TestResult,
+  AgentEvent, AgentSession, ConfigGroup, Deck, IndexStatus, SessionSummary, Health, Item, LlmSettings, SearchOptions, Source, TestResult,
 } from "./types";
 
 export class ApiError extends Error {}
@@ -85,11 +85,15 @@ export const api = {
     call<{ groups: ConfigGroup[] }>(`/config/reset?section=${encodeURIComponent(section)}`, { method: "POST" }),
 
   sessions: () => call<{ sessions: SessionSummary[] }>("/agent"),
+  indexStatus: () => call<IndexStatus>("/index"),
+  startUpdate: (refetch: boolean) => call<IndexStatus>("/index/update", { body: { refetch } }),
+  cancelUpdate: () => call<IndexStatus>("/index/update/cancel", { method: "POST" }),
   deleteChat: (id: string) => call<{ deleted: string }>(`/agent/${id}`, { method: "DELETE" }),
   newChat: (deck: Deck) => call<AgentSession>("/agent", { body: deck }),
   saveDeck: (id: string, deck: Deck) => call<{ deck: Deck }>(`/agent/${id}/deck`, { method: "PUT", body: deck }),
   chat: (id: string) => call<AgentSession>(`/agent/${id}`),
   sendMessage: streamMessage,
+  stopChat: (id: string) => call<{ stopped: boolean }>(`/agent/${id}/stop`, { method: "POST" }),
   slides: (body: DeckFields & { items: Item[]; ppi?: number }) =>
     call<{ slides: string[]; map: SlideInfo[] }>("/presentation/preview", { body }),
   deckDefaults: () => call<{ subtitle: string; kicker: string }>("/presentation/defaults"),

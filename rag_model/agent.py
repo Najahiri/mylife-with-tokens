@@ -33,6 +33,7 @@ import json
 import re
 import sqlite3
 import textwrap
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -78,6 +79,7 @@ class Session:
     deck: dict = field(default_factory=lambda: dict(DECK))   # presentation settings, edited in the UI and by the agent
     trash: list[dict] = field(default_factory=list)      # removed items, can be restored
     updated: float = field(default_factory=time.time)    # last change, for the list of conversations
+    stop: threading.Event = field(default_factory=threading.Event, repr=False, compare=False)   # stop button
     events: list[dict] = field(default_factory=list)     # everything the UI shows, in order
 
     def number(self, page_id: str) -> int | None:
@@ -450,13 +452,32 @@ def _clean(reply: ChatMessage) -> tuple[ChatMessage, str]:
 
 
 # ---------- loop ----------
+class Stopped(Exception):
+    pass
+
+
+def _close_open_calls(s: Session) -> None:
+    """After a stop, every tool call needs a result, otherwise the next request to the API is rejected."""
+    answered = {m.tool_call_result.origin.id for m in s.messages if m.tool_call_result}
+    for m in list(s.messages):
+        for call in m.tool_calls:
+            if call.id not in answered:
+                s.messages.append(ChatMessage.from_tool("Not run: the user stopped this answer.", origin=call))
+
+
 def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
     """Run one user message. Yields the events the UI shows; they are also kept in s.events."""
     t0 = time.time()
     cfg = config.load()
     max_items, max_steps = cfg["brief"]["max_items"], cfg["agent"]["max_steps"]
     system = Template(_spec()["system"]).render(language=cfg["brief"]["language"], max_items=max_items)
-    llm = generator("agent", cfg["llm"], tools=_tools(max_items))
+    s.stop.clear()
+
+    def watch(_chunk):                   # the stop button ends even an answer that is still streaming
+        if s.stop.is_set():
+            raise Stopped()
+
+    llm = generator("agent", cfg["llm"], tools=_tools(max_items), on_chunk=watch)
     start = len(s.events)
 
     def emit(event: dict) -> dict:
@@ -471,65 +492,76 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
     force = None
     done_calls = {json.dumps([c.tool_name, c.arguments], sort_keys=True)
                   for m in s.messages for c in m.tool_calls}
-    for _ in range(max_steps):
-        # after a reminder the next step is an add_items call; otherwise the model may also plan in text
-        prompt = ChatMessage.from_system(system + "\n" + _state(s))
-        reply = llm.run(messages=[prompt, *s.messages], **(_force(force) if force else {}))["replies"][0]
-        cut_off = reply.meta.get("finish_reason") == "length"
-        reply, reasoning = _clean(reply)
-        if reasoning:
-            yield emit({"type": "assistant", "text": reasoning, "final": False})
-        s.messages.append(reply)
-        force = None
-        if cut_off and nudges < NUDGES:   # a half-written tool call or text: tell it and let it continue
-            nudges += 1
-            yield emit({"type": "note", "text": "Apertus' answer was too long and was cut off; it continues in smaller steps."})
-            s.messages[-1] = ChatMessage.from_assistant(text=(reply.text or "")[:2000] or None, meta=reply.meta)
-            s.messages.append(ChatMessage.from_user(CUT_OFF))
-            continue
-        if not reply.tool_calls:
-            if pending and nudges < NUDGES:   # announced the next step in text and stopped
+    stopped = False
+    try:
+        for _ in range(max_steps):
+            if s.stop.is_set():
+                raise Stopped()
+            # after a reminder the next step is an add_items call; otherwise the model may also plan in text
+            prompt = ChatMessage.from_system(system + "\n" + _state(s))
+            reply = llm.run(messages=[prompt, *s.messages], **(_force(force) if force else {}))["replies"][0]
+            cut_off = reply.meta.get("finish_reason") == "length"
+            reply, reasoning = _clean(reply)
+            if reasoning:
+                yield emit({"type": "assistant", "text": reasoning, "final": False})
+            s.messages.append(reply)
+            force = None
+            if cut_off and nudges < NUDGES:   # a half-written tool call or text: tell it and let it continue
                 nudges += 1
-                if reply.text and reply.text.strip():
-                    yield emit({"type": "assistant", "text": reply.text.strip(), "final": False})
-                s.messages.append(ChatMessage.from_user(NUDGE[pending]))
-                force = pending
+                yield emit({"type": "note", "text": "Apertus' answer was too long and was cut off; it continues in smaller steps."})
+                s.messages[-1] = ChatMessage.from_assistant(text=(reply.text or "")[:2000] or None, meta=reply.meta)
+                s.messages.append(ChatMessage.from_user(CUT_OFF))
                 continue
-            yield emit({"type": "assistant", "text": (reply.text or "").strip(), "final": True})
-            answered = True
-            break
-        if reply.text and reply.text.strip():
-            yield emit({"type": "assistant", "text": reply.text.strip(), "final": False})
-        for call in reply.tool_calls:
-            key = json.dumps([call.tool_name, call.arguments], sort_keys=True)
-            if key in done_calls:
-                s.messages.append(ChatMessage.from_tool(
-                    "You already made exactly this call; its result is above. Continue with the next step.", origin=call))
-                yield emit({"type": "tool_call", "id": call.id, "name": call.tool_name, "repeated": True,
-                            "arguments": {} if call.tool_name == "add_items" else call.arguments})
-                continue
-            done_calls.add(key)
-            if call.tool_name == "search":
-                pending = pending or "read_pages"
-            elif call.tool_name == "read_pages":
-                pending = "add_items"
-            elif call.tool_name == "add_items":
-                pending = None
-            yield emit({"type": "tool_call", "id": call.id, "name": call.tool_name,
-                        "arguments": call.arguments if call.tool_name != "add_items"
-                        else {"items": len(call.arguments.get("items") or [])}})
-            try:
-                result, info = _run_tool(s, searcher, call.tool_name, call.arguments, max_items)
-                error = False
-            except Exception as e:   # the agent sees the error and can react to it
-                result, info, error = f"Error: {e}", {}, True
-            s.messages.append(ChatMessage.from_tool(result, origin=call, error=error))
-            yield emit({"type": "tool_result", "id": call.id, "name": call.tool_name, "error": error,
-                        "info": info, "text": result if error or call.tool_name in CHANGES else ""})
-            if call.tool_name in CHANGES and not error:
-                yield {"type": "items", "items": s.items, "dropped": s.dropped}
-                yield {"type": "deck", "deck": s.deck}
-    if not answered:
+            if not reply.tool_calls:
+                if pending and nudges < NUDGES:   # announced the next step in text and stopped
+                    nudges += 1
+                    if reply.text and reply.text.strip():
+                        yield emit({"type": "assistant", "text": reply.text.strip(), "final": False})
+                    s.messages.append(ChatMessage.from_user(NUDGE[pending]))
+                    force = pending
+                    continue
+                yield emit({"type": "assistant", "text": (reply.text or "").strip(), "final": True})
+                answered = True
+                break
+            if reply.text and reply.text.strip():
+                yield emit({"type": "assistant", "text": reply.text.strip(), "final": False})
+            for call in reply.tool_calls:
+                if s.stop.is_set():
+                    raise Stopped()
+                key = json.dumps([call.tool_name, call.arguments], sort_keys=True)
+                if key in done_calls:
+                    s.messages.append(ChatMessage.from_tool(
+                        "You already made exactly this call; its result is above. Continue with the next step.", origin=call))
+                    yield emit({"type": "tool_call", "id": call.id, "name": call.tool_name, "repeated": True,
+                                "arguments": {} if call.tool_name == "add_items" else call.arguments})
+                    continue
+                done_calls.add(key)
+                if call.tool_name == "search":
+                    pending = pending or "read_pages"
+                elif call.tool_name == "read_pages":
+                    pending = "add_items"
+                elif call.tool_name == "add_items":
+                    pending = None
+                yield emit({"type": "tool_call", "id": call.id, "name": call.tool_name,
+                            "arguments": call.arguments if call.tool_name != "add_items"
+                            else {"items": len(call.arguments.get("items") or [])}})
+                try:
+                    result, info = _run_tool(s, searcher, call.tool_name, call.arguments, max_items)
+                    error = False
+                except Exception as e:   # the agent sees the error and can react to it
+                    result, info, error = f"Error: {e}", {}, True
+                s.messages.append(ChatMessage.from_tool(result, origin=call, error=error))
+                yield emit({"type": "tool_result", "id": call.id, "name": call.tool_name, "error": error,
+                            "info": info, "text": result if error or call.tool_name in CHANGES else ""})
+                if call.tool_name in CHANGES and not error:
+                    yield {"type": "items", "items": s.items, "dropped": s.dropped}
+                    yield {"type": "deck", "deck": s.deck}
+    except Stopped:
+        stopped = True
+        _close_open_calls(s)
+        s.notes.append("The user stopped your previous answer before it was finished.")
+        yield emit({"type": "stopped"})
+    if not answered and not stopped:
         yield emit({"type": "assistant", "final": True,
                     "text": f"Stopped after {max_steps} steps (Settings → Agent). Ask me to continue if needed."})
     trace = write_trace({"agent_session": s.id, "prompt_version": _spec()["version"], "took_s": round(time.time() - t0, 1),
