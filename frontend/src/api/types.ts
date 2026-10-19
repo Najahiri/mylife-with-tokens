@@ -44,6 +44,7 @@ export interface ConfigField {
 export interface ConfigGroup {
   section: string;
   title: string;
+  intro?: string;
   applies: string;
   editable: boolean;
   fields: ConfigField[];

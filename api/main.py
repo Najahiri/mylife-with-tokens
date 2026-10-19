@@ -334,7 +334,7 @@ def reset_config(section: str | None = None):
 
 @app.post("/api/settings/test")
 def test():
-    return {"results": test_connection(verbose=False)}
+    return {"results": test_connection(verbose=False, roles=("agent",))}   # the UI only uses the agent
 
 
 @app.get("/api/health")

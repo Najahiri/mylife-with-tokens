@@ -22,9 +22,9 @@ def list_models() -> list[str]:
     return sorted(m["id"] for m in r.json().get("data", []))
 
 
-def test_connection(verbose: bool = True) -> list[dict]:
+def test_connection(verbose: bool = True, roles: tuple[str, ...] = ROLES) -> list[dict]:
     results = []
-    for role in ROLES:
+    for role in roles:
         t0 = time.time()
         try:
             reply = generator(role, config.load()["llm"]).run(messages=[ChatMessage.from_user("Reply with: ok")])
