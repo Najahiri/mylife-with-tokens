@@ -81,6 +81,8 @@ export interface Item {
   contacts: Contact[];
   contacts_removed: Contact[];
   flags: string[];
+  edited?: string[];      // fields changed on the user's request
+  unbacked?: string[];    // what the source pages do not back since those changes
 }
 
 export interface Dropped {

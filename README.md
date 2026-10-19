@@ -21,6 +21,21 @@ the Kanton Bern design, one slide per partner. Every slide is backed by a quote 
 
 `data/` is not in the repository: crawl, index, traces, conversations and `settings.json` (API key) are local.
 
+## Data
+
+The search index is too large for git. Download it from the release
+[raglette-data-v1](https://github.com/Najahiri/mylife-with-tokens/releases/tag/raglette-data-v1) and unzip it into `data/`:
+
+```sh
+mkdir -p data && cd data
+curl -LO https://github.com/Najahiri/mylife-with-tokens/releases/download/raglette-data-v1/index.sqlite.zip
+unzip index.sqlite.zip && rm index.sqlite.zip && cd ..
+```
+
+`index.sqlite` holds the pages, the chunks and their BGE-M3 vectors. On the first start the API builds the vector
+store `data/qdrant` from it (about a minute) and downloads the embedding model BGE-M3 (about 2 GB) from Hugging Face.
+`crawl.sqlite.zip` in the same release is the raw crawl, only needed to rebuild the index without crawling again.
+
 ## Run
 
 Requirements: Python 3.14 with [uv](https://docs.astral.sh/uv/), Node.js.
@@ -33,7 +48,9 @@ uv run uvicorn api.main:app --port 8000     # http://localhost:8000
 
 Then set the Apertus API (base URL, key, models) under Settings in the UI.
 
-## Build the index
+## Build the index yourself
+
+Only needed for other websites or a fresh crawl; embedding is slow without a GPU.
 
 ```sh
 uv run python scraper/crawl.py sources.yaml data/crawl.sqlite

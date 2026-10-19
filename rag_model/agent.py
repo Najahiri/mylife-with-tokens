@@ -6,7 +6,8 @@
                           join the list, the reasons for rejected ones go back to the agent
     remove_items(titles)  takes items off the list (e.g. when the user asks); they go to the trash
     restore_items(titles)            brings items back from the trash, unchanged (they were checked already)
-    edit_item(title, changes)        changes one item (text, title, category, facts, contacts); checked again
+    edit_item(title, changes)        changes one item as the user asks; never refused, what the source does not
+                                     back is marked on the item
     update_presentation(...)         title-slide texts and which extra slides are shown
 
 The current presentation (settings and every item) is part of the system prompt at every step, so the agent
@@ -45,7 +46,7 @@ from jinja2 import Template
 from rapidfuzz import fuzz
 
 from rag_model import config
-from rag_model.brief import INDEX_DB, PROMPTS, _norm, check, write_trace
+from rag_model.brief import INDEX_DB, PROMPTS, _name_on_page, _norm, check, write_trace
 from rag_model.llm import generator
 from rag_model.presentation import DECK, category
 from rag_model.search import ROOT, Searcher
@@ -285,7 +286,7 @@ def _restore(s: Session, titles: list[str], max_items: int) -> tuple[str, dict]:
             {"restored": len(back)})
 
 
-EDITABLE = ("title", "category", "organisation", "summary", "relevance", "facts", "contacts")
+EDITABLE = ("title", "category", "organisation", "summary", "relevance", "facts", "contacts", "evidence")
 DECK_ARGS = {"company": "company", "subtitle": "subtitle", "label_above_title": "kicker", "speaker": "author",
              "organisation": "organizer", "overview_slide": "overview", "contacts_slide": "contacts_slide"}
 
@@ -300,31 +301,46 @@ def _find(s: Session, title: str) -> int | None:
     return best[1] if best[0] >= 80 else None
 
 
-def _edit(s: Session, searcher: Searcher, title: str, changes: dict) -> tuple[str, dict]:
-    """Change one item in place. Facts and contacts are checked against its source pages again."""
+def _edit(s: Session, title: str, changes: dict) -> tuple[str, dict]:
+    """Change one item as the user asks. The user has the last word: nothing is refused. What the source pages do
+    not back (facts, contacts, quote) is marked on the item, so the evidence view shows it."""
     i = _find(s, title)
     if i is None:
         return f"There is no item «{title}». The items are: {_titles(s)}.", {}
     old = s.items[i]
-    numbers = {p["url"]: n + 1 for n, p in enumerate(s.pages)}
-    raw = {**old, **{k: v for k, v in (changes or {}).items() if k in EDITABLE},
-           "sources": [numbers[src["url"]] for src in old["sources"] if src["url"] in numbers]}
-    raw, problems = _normalize(raw)
-    new_title = raw.get("title", "").strip().lower()
-    if any(j != i and it["title"].strip().lower() == new_title for j, it in enumerate(s.items)):
-        problems.append(f"another item is already titled «{raw['title']}»")
-    if problems:
-        return f"«{old['title']}» not changed: {'; '.join(problems)}.", {}
-    docs = [Document(id=p["page_id"], content=_page_text(p["page_id"]),
-                     meta={"url": p["url"], "title": p["title"], "website": p["website"]}) for p in s.pages]
-    kept, dropped = check([raw], docs, searcher)
-    if dropped:
-        return f"«{old['title']}» not changed: {'; '.join(dropped[0]['reasons'])}.", {}
-    s.items[i] = kept[0]
-    notes = kept[0]["flags"] + [f"contact {c.get('name')} is not named on the source pages, removed"
-                                for c in kept[0]["contacts_removed"]]
-    return (f"«{old['title']}» updated" + (f" (now «{kept[0]['title']}»)" if kept[0]["title"] != old["title"] else "")
-            + "." + (f" Notes: {'; '.join(notes)}." if notes else "")), {"edited": kept[0]["title"]}
+    changes = {k: v for k, v in (changes or {}).items() if k in EDITABLE and v is not None}
+    if not changes:
+        return f"Nothing to change in «{old['title']}»: give the fields to change in \"changes\".", {}
+    if "category" in changes:
+        changes["category"] = category(str(changes["category"]))
+    if "contacts" in changes:
+        changes["contacts"] = _normalize({"contacts": changes["contacts"]})[0]["contacts"]
+    if "facts" in changes:
+        changes["facts"] = [str(f).strip() for f in changes["facts"] or [] if str(f).strip()]
+    new_title = str(changes.get("title", old["title"])).strip()
+    if any(j != i and it["title"].strip().lower() == new_title.lower() for j, it in enumerate(s.items)):
+        return f"«{old['title']}» not changed: another item is already titled «{new_title}».", {}
+
+    by_url = {p["url"]: p["page_id"] for p in s.pages}
+    pages = [_norm(_page_text(by_url[src["url"]])) for src in old["sources"] if src["url"] in by_url]
+    min_ratio = config.load()["check"]["evidence_min_ratio"]
+    on_page = lambda text: any(fuzz.partial_ratio(_norm(text), p) >= min_ratio for p in pages)
+    unbacked = [f"fact «{f}»" for f in changes.get("facts", []) if not on_page(f)]
+    unbacked += [f"contact {c['name']}" for c in changes.get("contacts", []) if not any(_name_on_page(c["name"], p) for p in pages)]
+    if "evidence" in changes and not on_page(str(changes["evidence"])):
+        unbacked.append("quote")
+
+    item = {**old, **changes, "title": new_title}
+    item["edited"] = sorted(set(old.get("edited", [])) | set(changes))
+    item["unbacked"] = list(dict.fromkeys(old.get("unbacked", []) + unbacked))
+    note = f"changed on request: {', '.join(item['edited'])}"
+    if item["unbacked"]:
+        note += f"; not in the source: {', '.join(item['unbacked'])}"
+    item["flags"] = [f for f in old.get("flags", []) if not f.startswith("changed on request")] + [note]
+    s.items[i] = item
+    return (f"«{old['title']}» updated" + (f" (now «{new_title}»)" if new_title != old["title"] else "") + "."
+            + (f" Not backed by the source pages, marked for the user: {', '.join(unbacked)}." if unbacked else "")
+            ), {"edited": new_title}
 
 
 def _update_deck(s: Session, args: dict) -> tuple[str, dict]:
@@ -365,7 +381,7 @@ def _run_tool(s: Session, searcher: Searcher, name: str, args: dict, max_items: 
     if name == "restore_items":
         return _restore(s, args.get("titles") or [], max_items)
     if name == "edit_item":
-        return _edit(s, searcher, args.get("title", ""), args.get("changes") or {})
+        return _edit(s, args.get("title", ""), args.get("changes") or {})
     if name == "update_presentation":
         return _update_deck(s, args)
     raise ValueError(f"unknown tool {name}")

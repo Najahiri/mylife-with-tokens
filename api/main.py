@@ -36,6 +36,11 @@ busy: dict[str, threading.Lock] = {}
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # after a fresh clone only index.sqlite is there (download, see README): build the vector store from its vectors
+    if not (ROOT / "data" / "qdrant").exists() and (ROOT / "data" / "index.sqlite").exists():
+        from indexing import index as indexer
+        print("data/qdrant is missing: loading the vectors from data/index.sqlite (a few minutes, once)", flush=True)
+        indexer.load()
     state["searcher"] = Searcher()
     state["searcher"].embed("warm up")   # load BGE-M3 once at start, not on the first request
     sessions.update(agent.load_sessions())
