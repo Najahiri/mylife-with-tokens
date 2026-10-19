@@ -182,7 +182,7 @@ export function ChatPage() {
             // welcome: centred in the empty chat, gone with the first message
             <div className="animate-in-up m-auto flex max-w-xl flex-col gap-5 px-2 py-10 text-center">
               <h2 className="text-[clamp(2rem,3.4vw,2.9rem)] leading-[1.05] font-bold tracking-[-0.02em] text-balance text-secondary">
-                Which company are you pitching to?
+                Which company should get a taste of Bern?
               </h2>
               <p className="text-base leading-relaxed text-pretty text-foreground/80">
                 Describe what it does, in a few words or with lines from its own pitch. RAGlette reads the websites of

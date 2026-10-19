@@ -77,7 +77,7 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
 **RAGlette's answer:**
 
 - You chat with an agent: Apertus 70B with tools, via an OpenAI-compatible gateway.
-- It searches a local index of 41 websites, using HyDE plus hybrid BGE-M3/Qdrant search.
+- It searches a local index of 41 websites: HyDE passages, embedded with BGE-M3 and searched in Qdrant by meaning (no keyword/BM25 search), with RRF across passages.
 - It reads full pages and composes items: research groups, infrastructure, programmes, networks, education, contacts.
 - Plain code checks every quote and fact against its page.
 - Typst renders the slides in the Kanton Bern design (PDF/PPTX), with a preview next to the chat.
