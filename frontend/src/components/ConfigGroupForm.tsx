@@ -6,7 +6,7 @@ import type { ConfigField, ConfigGroup } from "@/api/types";
 import { SettingsCard, SettingsField, settingsInput } from "@/components/SettingsCard";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 function show(v: unknown) {
   return Array.isArray(v) ? v.join(", ") : String(v);
@@ -32,16 +32,7 @@ export function ConfigGroupForm({ group }: { group: ConfigGroup }) {
     const v = draft[f.key];
     const set = (x: unknown) => setDraft({ ...draft, [f.key]: x });
     if (f.type === "bool")
-      return (
-        <button type="button" role="switch" aria-checked={Boolean(v)} onClick={() => set(!v)}
-                className="flex h-10 items-center gap-3 text-sm">
-          <span className={cn("relative h-6 w-11 rounded-full transition-colors duration-200", v ? "bg-secondary" : "bg-input")}>
-            <span className={cn("absolute top-0.5 left-0.5 size-5 rounded-full bg-background shadow transition-transform duration-200",
-                                Boolean(v) && "translate-x-5")} />
-          </span>
-          {v ? "On" : "Off"}
-        </button>
-      );
+      return <div className="flex h-10 items-center"><Switch checked={Boolean(v)} onChange={set} label={v ? "On" : "Off"} showLabel /></div>;
     if (f.type === "select")
       return (
         <select value={String(v)} onChange={(e) => set(e.target.value)} className={settingsInput}>
