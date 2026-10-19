@@ -109,6 +109,7 @@ class DeckIn(BaseModel):
     overview: bool = True
     contacts_slide: bool = True
     ppi: int = Field(72, ge=30, le=220)   # preview resolution; the big view asks for more
+    format: Literal["pdf", "pptx"] = "pdf"   # for the export
 
 
 def _clean(items: list[str]) -> list[str]:
@@ -202,15 +203,20 @@ def deck_defaults():
     return presentation.defaults()
 
 
-@app.post("/api/presentation/pdf")
-def pdf(body: DeckIn):
+EXPORT_TYPES = {"pdf": "application/pdf",
+                "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+
+
+@app.post("/api/presentation/export")
+def export(body: DeckIn):
+    """The deck as a file: PDF, or PowerPoint with every slide as a picture and its text in the notes."""
     try:
-        data = presentation.render(_deck(body), "pdf")
+        data = presentation.pptx(_deck(body)) if body.format == "pptx" else presentation.render(_deck(body), "pdf")
     except Exception as e:
         raise HTTPException(422, f"Typst: {e}")
     name = re.sub(r"[^\w-]+", "-", body.company.strip() or "company").strip("-")
-    return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{name}-business-case.pdf"'})
+    return Response(data, media_type=EXPORT_TYPES[body.format],
+                    headers={"Content-Disposition": f'attachment; filename="{name}-business-case.{body.format}"'})
 
 
 # ---------- pipeline ----------

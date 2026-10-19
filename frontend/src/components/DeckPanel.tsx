@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { Expand, FileDown, Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { api, type DeckFields } from "@/api/client";
 import type { Deck, Item } from "@/api/types";
+import { ExportMenu, type ExportFormat } from "@/components/ExportMenu";
 import { ItemCard } from "@/components/ItemCard";
 import { SlideViewer } from "@/components/SlideViewer";
 import { ErrorNote } from "@/components/Step";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDebounced } from "@/lib/useDebounced";
 import { cn } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
     queryKey: ["slides", request], queryFn: () => api.slides(JSON.parse(request)),
     enabled: items.length > 0, placeholderData: keepPreviousData,
   });
-  const pdf = useMutation({ mutationFn: () => api.downloadPdf({ ...fields, items }) });
+  const exporting = useMutation({ mutationFn: (format: ExportFormat) => api.exportDeck({ ...fields, items, format }) });
   const slides = items.length ? preview.data?.slides ?? [] : [];
   const map = preview.data?.map ?? [];
   const itemOf = (i: number) => (map[i]?.kind === "item" ? map[i].title : undefined);
@@ -51,13 +51,8 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
     <aside className="flex flex-col gap-4 lg:min-h-0">
       <h2 className="sr-only">Presentation</h2>
       <div className="flex items-end gap-4">
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setViewing(0)} disabled={!slides.length}>
-            <Expand /> View
-          </Button>
-          <Button size="sm" onClick={() => pdf.mutate()} disabled={!items.length || pdf.isPending}>
-            {pdf.isPending ? <Loader2 className="animate-spin" /> : <FileDown />} PDF
-          </Button>
+        <div className="ml-auto">
+          <ExportMenu disabled={!items.length} pending={exporting.isPending} onExport={(f) => exporting.mutate(f)} />
         </div>
       </div>
 
@@ -69,7 +64,7 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
           Evidence {items.length > 0 && `· ${items.length}`}
         </button>
       </div>
-      <ErrorNote error={preview.error || pdf.error} />
+      <ErrorNote error={preview.error || exporting.error} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
         {tab === "slides" && (

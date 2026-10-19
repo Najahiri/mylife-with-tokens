@@ -4,14 +4,19 @@
     slide_map(data)         what each slide shows (so the UI can delete the slide of an item)
     render(data, "pdf")     the PDF as bytes
     render(data, "png")     one PNG per slide, for the preview in the UI
+    pptx(data)              PowerPoint: every slide as a picture of the Typst slide (looks exactly like the PDF),
+                            with the slide's text in the speaker notes to copy from
 
 Slides: title · at a glance · one slide per item (grouped by category) · contacts. Without a named contact
 the source page is the contact (its website and a link). The fixed labels follow Settings → Result → language.
 """
+import io
 import json
 import textwrap
 
 import typst
+from pptx import Presentation
+from pptx.util import Cm
 
 from rag_model import config
 from rag_model.search import ROOT
@@ -132,6 +137,44 @@ def render(data: dict, fmt: str = "pdf", ppi: int = 72) -> bytes | list[bytes]:
                         font_paths=[TEMPLATE / "assets" / "fonts"], ignore_system_fonts=True,
                         sys_inputs={"json": json.dumps(data, ensure_ascii=False)})
     return out if isinstance(out, list) or fmt == "pdf" else [out]
+
+
+PPTX_PPI = 200   # sharp on a projector, a few MB per deck
+
+
+def _notes(data: dict, info: dict) -> str:
+    """The text of one slide, for the speaker notes."""
+    L = data["labels"]
+    if info["kind"] == "title":
+        return "\n".join(t for t in (data["company"], L["subtitle"], f"{L['speaker']}: {data['author']}", data["organizer"]) if t)
+    if info["kind"] == "overview":
+        return "\n".join(f"{it['category_label']}: {it['title']} ({it['organisation']})" for it in data["items"])
+    if info["kind"] == "contacts":
+        return "\n".join(f"{c['name']}, {c.get('function', '')}, {c.get('email') or c.get('phone') or ''} – {it['title']}"
+                         for it in data["items"] for c in it["contacts"] if "url" not in c)
+    it = next(i for i in data["items"] if i["title"] == info["title"])
+    lines = [it["title"], " · ".join(t for t in (it["category_label"], it["organisation"]) if t), "",
+             f"{L['what']}: {it['summary']}"]
+    if it["relevance"]:
+        lines.append(f"{L['why']}: {it['relevance']}")
+    lines += [f"– {f}" for f in it["facts"]]
+    if it["evidence"]:
+        lines += ["", f"«{it['evidence']}»"]
+    lines += ["", f"{L['source']}: " + " · ".join(s["url"] for s in it["sources"])]
+    return "\n".join(lines)
+
+
+def pptx(data: dict) -> bytes:
+    deck = Presentation()
+    deck.slide_width, deck.slide_height = Cm(33.867), Cm(19.05)
+    blank = deck.slide_layouts[6]
+    for png, info in zip(render(data, "png", ppi=PPTX_PPI), slide_map(data)):
+        slide = deck.slides.add_slide(blank)
+        slide.shapes.add_picture(io.BytesIO(png), 0, 0, width=deck.slide_width, height=deck.slide_height)
+        slide.notes_slide.notes_text_frame.text = _notes(data, info)
+    out = io.BytesIO()
+    deck.save(out)
+    return out.getvalue()
 
 
 if __name__ == "__main__":   # writes raglette-example.json from the latest agent trace, to compile the deck by hand
