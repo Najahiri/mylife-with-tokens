@@ -175,17 +175,19 @@ export function ChatPage() {
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!events.length && (
-            <div className="flex max-w-prose flex-col gap-3">
-              <p className="text-xl leading-snug font-semibold text-secondary">
-                Start with the buzzwords from a company's sales pitch.
+            // welcome: centred in the empty chat, gone with the first message
+            <div className="animate-in-up m-auto flex max-w-xl flex-col gap-5 px-2 py-10 text-center">
+              <h2 className="text-[clamp(2rem,3.4vw,2.9rem)] leading-[1.05] font-bold tracking-[-0.02em] text-balance text-secondary">
+                Which company are you pitching to?
+              </h2>
+              <p className="text-base leading-relaxed text-pretty text-foreground/80">
+                Describe what it does, in a few words or with lines from its own pitch. RAGlette reads the websites of
+                Bern's research institutions and builds a slide for every partner that fits, each one backed by a quote
+                from its source.
               </p>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                RAGlette searches the websites of Bern's research institutions, reads the best matches in full and turns
-                every partner it can back with a quote from the source into a slide.
-              </p>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Then refine the deck in your own words, for example <em>“focus on research groups”</em> or{" "}
-                <em>“find more on rehabilitation”</em>. To drop a partner, delete its slide.
+              <p className="text-sm leading-relaxed text-balance text-muted-foreground">
+                Then shape the deck right here: <em>“focus on research groups”</em>,{" "}
+                <em>“find more on rehabilitation”</em>, <em>“shorten the texts”</em>.
               </p>
             </div>
           )}
@@ -210,7 +212,7 @@ export function ChatPage() {
 
         <ErrorNote error={error} />
         <Composer value={draft} onChange={setDraft} onSend={send} running={running}
-                  placeholder={events.length ? "Ask for changes …" : "Buzzwords, e.g. wearables, precision diabetes care, AI-first, scale-up"} />
+                  placeholder={events.length ? "Ask for changes or more partners …" : "Describe the company, e.g. wearable glucose sensors for diabetes care"} />
       </section>
 
       <SideDrawer open={panelOpen}>
