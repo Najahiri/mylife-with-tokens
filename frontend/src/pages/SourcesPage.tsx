@@ -107,7 +107,7 @@ function SourcesEditor({ initial }: { initial: Source[] }) {
         </form>
       </section>
 
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-5 rounded-3xl bg-cream p-6 sm:p-8">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-2xl leading-none font-bold">Websites</h2>
           <div className="relative ml-auto w-full sm:w-72">
@@ -120,8 +120,8 @@ function SourcesEditor({ initial }: { initial: Source[] }) {
         <ul className="flex flex-col gap-2">
           {visible.map(({ r, i }) => (
             <li key={r.name || `new-${i}`}
-                className={cn("animate-in-up rounded-2xl border transition-colors duration-200",
-                              editing === i ? "border-secondary/20 bg-cream" : "border-secondary/10 hover:border-secondary/25")}>
+                className={cn("animate-in-up rounded-2xl border bg-background transition-colors duration-200",
+                              editing === i ? "border-secondary/30" : "border-transparent hover:border-secondary/20")}>
               <div className="flex items-center gap-4 px-5 py-3.5">
                 <Switch checked={r.enabled} onChange={(v) => update(i, { enabled: v })} label={`Use ${r.desc || r.url}`} />
                 <div className={cn("min-w-0 flex-1 transition-opacity", !r.enabled && "opacity-50")}>
@@ -178,7 +178,7 @@ function SourcesEditor({ initial }: { initial: Source[] }) {
             </li>
           ))}
           {visible.length === 0 && (
-            <li className="rounded-2xl border border-dashed border-secondary/20 px-5 py-6 text-sm text-muted-foreground">
+            <li className="rounded-2xl border border-dashed border-secondary/20 bg-background px-5 py-6 text-sm text-muted-foreground">
               No website matches "{filter}".
             </li>
           )}
