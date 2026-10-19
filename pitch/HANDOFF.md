@@ -107,7 +107,7 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
      2. **Contained run time:** minutes, not hours; capped agent steps.
      3. **Sovereignty:** Apertus, the open Swiss model, and a search database we build and run ourselves.
 3. **solution**
-   - Headline: "Five parts, one conversation."
+   - **No headline.** The user had "Five parts, one conversation." removed. The eyebrow "02 · HOW IT WORKS" stays.
    - Reworked on 2026-10-19 after the user's feedback: too many colours and styles, texts not fitting, boxes not equal or equidistant, an arrow overlapping its box. The "1 Interface" title used to take a full row inside its band.
    - Each part's title (30 px Abhaya heading, `white-space:nowrap`, title box 280 px wide) sits **above** its box. There are **no number squares**: the user found part numbers misleading.
      - "Interface" is at top 340.
@@ -129,18 +129,23 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
      - Chat ↔ Apertus is a single arrow with two heads.
      - The horizontal arrows are at lane mid-height (y 740). Between RAG and Apertus there are two arrows: "calls" at y 710 and "hits" at y 770.
    - There is no red inside the diagram and no legend.
-4. **examples** (added 2026-10-19), "From web page to slide."
-   - Same header as slide 3: 02 HOW IT WORKS active, bar 1440.
-   - Seven cream cards in a 4 + 3 grid. Each card is 392 × 280 px, with columns at x = 128, 552, 976, 1400 and rows at top 340 and 652.
-   - Each card has a red label "N · …" and rises in automatically. Arrows join 1→2, 3→4, 5→6 and 6→7.
-     1. SCRAPED HTML: real HTML from https://www.dcberne.com/en/four-dcb-professorships-advance-research-in-diabetes-technology/, in JetBrains Mono, at most 24 characters per line. That is why `deck.json` has the JetBrains Mono face again.
-     2. CLEANED TEXT: the real trafilatura output of that page (haystack `HTMLToDocument`), then "→ ~160-word passages, BGE-M3".
-     3. CHAT: "Start-up developing wearable glucose sensors".
-     4. SEARCH PASSAGES: two example HyDE passages. These are illustrative.
-     5. PAGES FOUND: "[1] dcberne.com · Four DCB professorships …", "[2] … up to 30 pages". This is an example result, not from a logged run.
-     6. ITEM + QUOTE: title "DCB diabetes technology professorships", with a real quote from the page and "— page [1]".
-     7. SLIDE (double width): a mini item slide (RESEARCH, title, quote, "Source: dcberne.com").
-   - The user asked for this slide: "scraping shows the html, then the html is cleaned and fed to the RAG; the chat query, the array of sentences fed to the RAG, a sample of the results, and similar examples for the rest".
+4. **examples** (added 2026-10-19)
+   - **The same diagram as slide 3, in the same place.** Every diagram element has the same `id` on both slides, so the magic transition keeps it still:
+     - `t-int` (Interface title), `band`, the buttons `b-src`, `b-chat`, `b-prev`;
+     - the lane titles `t-idx`, `t-rag`, `t-ap`, `t-exp` and the lanes `l-idx`, `l-rag`, `l-ap`, `l-exp`;
+     - the connectors `c-src`, `c-idx`, `c-chat`, `c-calls`, `c-hits`, `c-exp`, `c-prev`, and the labels `lbl-calls`, `lbl-hits`.
+     - **Keep these ids on both slides when you edit either one.**
+   - On slide 4 the diagram has no build-in. The eyebrow reads "02 · HOW IT WORKS · ONE EXAMPLE".
+   - The lanes are emptied and 360 px high (580–940).
+   - **Eight white example cards** (296 × 150 px) are pinned in the lanes, two per lane at top 604 and 766, next to the exchange they show. They rise in automatically, 1–8:
+     - Indexing: SCRAPED HTML (real, JetBrains Mono, at most 18 characters per line), CLEANED TEXT (real, trafilatura).
+     - RAG: SEARCH PASSAGES (example; three entries on three lines, `white-space:nowrap`, so it reads as an array: “Wearable sensors …”, “Glucose monitors …”, “Biosensor patches …”), PAGES FOUND ("[1] dcberne.com · Four DCB professorships …", an example).
+     - Apertus: FROM THE CHAT ("Start-up developing wearable glucose sensors"), ITEM + QUOTE (a real quote, p. [1]).
+     - Export: SLIDE (one text block of three lines: **DCB professorships** / diabetes technology / Source: dcberne.com).
+       - **The cause of "smaller text":** the cards have a fixed height of 150 px. Content taller than that makes the deck shrink the card's text automatically.
+       - Keep every card to a label plus **one text block of at most three lines**. Two blocks, or a bold title that wraps to three lines, overflow., FILES (preview · PDF · PowerPoint).
+   - The source page is https://www.dcberne.com/en/four-dcb-professorships-advance-research-in-diabetes-technology/
+   - The user rejected a version laid out as a grid of 7 cards: "not reshuffled". The examples must sit **where the communication happens in slide 3**.
 
 5. **merci**
    - Light theme since 2026-10-19, at the user's request:
