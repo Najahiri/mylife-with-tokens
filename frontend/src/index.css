@@ -91,6 +91,7 @@
   html {
     color-scheme: light;
     -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
   }
   html.dark {
     color-scheme: dark;
@@ -125,6 +126,42 @@
     letter-spacing: 0.22em;
     text-transform: uppercase;
   }
+}
+
+/* Motion: short, eased entrances for everything that appears; reduced motion switches them off (below). */
+@keyframes rg-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rg-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rg-zoom {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@utility animate-in-up {
+  animation: rg-in-up 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@utility animate-fade {
+  animation: rg-in 0.25s ease-out both;
+}
+@utility animate-zoom {
+  animation: rg-zoom 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* <details> open and close with a height transition where the browser supports it */
+:root {
+  interpolate-size: allow-keywords;
+}
+details::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 0.25s ease, content-visibility 0.25s allow-discrete;
+}
+details[open]::details-content {
+  block-size: auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

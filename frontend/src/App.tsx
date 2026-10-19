@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BackgroundField } from "@/components/BackgroundField";
 import { Header } from "@/components/Header";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ChatPage } from "@/pages/ChatPage";
@@ -15,8 +16,9 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={150}>
         <BrowserRouter>
+          <BackgroundField />
           <Header />
-          <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6">
+          <main className="mx-auto w-full max-w-[96rem] px-4 sm:px-6">
             <Routes>
               <Route path="/" element={<ChatPage />} />
               <Route path="/sources" element={<SourcesPage />} />

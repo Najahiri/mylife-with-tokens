@@ -46,7 +46,16 @@ export function ItemCard({ item, hitOf }: { item: Item; hitOf: (url: string) => 
           ))}
         </ul>
       )}
-      {item.flags.map((f) => (
+      {!!item.edited?.length && (
+        <p className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="rounded-full bg-secondary px-2 py-0.5 font-semibold text-secondary-foreground">Changed on request</span>
+          <span className="text-muted-foreground">{item.edited.join(", ")}</span>
+          {!!item.unbacked?.length && (
+            <span className="text-amber-700 dark:text-amber-400">· not in the source: {item.unbacked.join(", ")}</span>
+          )}
+        </p>
+      )}
+      {item.flags.filter((f) => !f.startsWith("changed on request")).map((f) => (
         <p key={f} className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400">
           <AlertTriangle className="size-3.5" /> {f}
         </p>

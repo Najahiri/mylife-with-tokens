@@ -4,10 +4,10 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { api } from "@/api/client";
 import type { LlmSettings } from "@/api/types";
 import { ConfigGroupForm } from "@/components/ConfigGroupForm";
+import { IndexUpdateCard } from "@/components/IndexUpdateCard";
+import { SettingsCard, SettingsField, settingsInput } from "@/components/SettingsCard";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
-
-const field = "h-9 border border-input bg-background px-2 text-sm outline-none focus:border-secondary";
 
 export function SettingsPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
@@ -16,19 +16,38 @@ export function SettingsPage() {
   if (settings.isError || config.isError)
     return <div className="pt-10"><ErrorNote error={settings.error || config.error} /></div>;
 
+  const sections = [{ id: "api", title: "Apertus access" }, { id: "index", title: "Search index" },
+                    ...config.data.groups.map((g) => ({ id: g.section, title: g.title }))];
+
   return (
-    <div className="flex max-w-3xl flex-col gap-8 pt-10">
-      <div className="flex flex-col gap-1">
+    // the cards are centred on the page; the section links float in the free margin to their left (wide screens)
+    <div className="animate-fade mx-auto w-full max-w-3xl pt-10 pb-24">
+      <div className="flex flex-col gap-2">
         <h1 className="text-5xl leading-none font-bold tracking-[-0.02em]">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          All parameters of the pipeline. Changed values apply to all requests until they are reset.
-        </p>
+        <p className="text-sm text-muted-foreground">Changes apply to all conversations until they are reset.</p>
       </div>
-      <ApiAccess llm={settings.data.llm} />
-      {config.data.groups.map((g) => (
-        // the key remounts a group with fresh values after saving or resetting
-        <ConfigGroupForm key={`${g.section}-${JSON.stringify(g.fields.map((f) => f.value))}`} group={g} />
-      ))}
+      <div className="relative mt-10">
+        <nav aria-label="Settings sections" className="absolute inset-y-0 right-full mr-10 hidden w-44 xl:block">
+          <ul className="sticky top-6 flex flex-col gap-0.5">
+            {sections.map((s) => (
+              <li key={s.id}>
+                <a href={`#${s.id}`}
+                   className="block rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-secondary">
+                  {s.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="flex min-w-0 flex-col gap-6">
+          <ApiAccess llm={settings.data.llm} />
+          <IndexUpdateCard />
+          {config.data.groups.map((g) => (
+            // the key remounts a group with fresh values after saving or resetting
+            <ConfigGroupForm key={`${g.section}-${JSON.stringify(g.fields.map((f) => f.value))}`} group={g} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -37,18 +56,17 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   const qc = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(llm.base_url ?? "");
   const [apiKey, setApiKey] = useState("");
-  const [modelQueries, setModelQueries] = useState(llm.model_queries ?? "");
-  const [modelBrief, setModelBrief] = useState(llm.model_brief ?? "");
-  const [modelAgent, setModelAgent] = useState(llm.model_agent ?? "");
+  const [model, setModel] = useState(llm.model_agent ?? "");
   const [decisionUrl, setDecisionUrl] = useState(llm.decision_url ?? "");
   const [decisionKey, setDecisionKey] = useState("");
   const [decisionModel, setDecisionModel] = useState(llm.decision_model ?? "");
 
   const models = useQuery({ queryKey: ["models"], queryFn: api.models, enabled: llm.key_set });
   const save = useMutation({
-    mutationFn: () => api.saveSettings({ base_url: baseUrl, api_key: apiKey || undefined,
-      model_queries: modelQueries, model_brief: modelBrief, model_agent: modelAgent,
-      decision_url: decisionUrl, decision_api_key: decisionKey || undefined, decision_model: decisionModel }),
+    mutationFn: () => api.saveSettings({
+      base_url: baseUrl, api_key: apiKey || undefined, model_agent: model,
+      decision_url: decisionUrl, decision_api_key: decisionKey || undefined, decision_model: decisionModel,
+    }),
     onSuccess: () => {
       setApiKey("");
       setDecisionKey("");
@@ -60,88 +78,60 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   const test = useMutation({ mutationFn: api.test });
   const options = models.data?.models ?? [];
 
-  const modelField = (label: string, hint: string, value: string, set: (v: string) => void) => (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium">{label}</span>
-      {options.length ? (
-        <select value={value} onChange={(e) => set(e.target.value)} className={field}>
-          {!options.includes(value) && <option value={value}>{value || "– choose –"}</option>}
-          {options.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
-      ) : (
-        <input value={value} onChange={(e) => set(e.target.value)} className={field} />
-      )}
-      <span className="text-[11px] text-muted-foreground">{hint}</span>
-    </label>
-  );
-
   return (
-    <section className="flex flex-col gap-5 border-l-4 border-primary bg-cream p-6">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl leading-none font-bold">Apertus access</h2>
-        <p className="text-xs text-muted-foreground">
-          Chat generation and fine-tuned decision scoring use separate APIs. Keys stay in the backend.
-        </p>
-      </div>
-      <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">Chat API base URL</span>
-          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={field}
-                 placeholder="https://gateway.keera.ch/api/v1" />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">API key</span>
-          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className={field}
-                 autoComplete="off"
-                 placeholder={llm.key_set ? `set (…${llm.key_last4}), leave empty to keep it` : "Enter key"} />
-        </label>
-        <div className="grid gap-5 sm:grid-cols-2">
-          {modelField("Model for search terms (B2)", "translates buzzwords into technical terms, e.g. 8B", modelQueries, setModelQueries)}
-          {modelField("Model for pitch information (B4)", "instruction-tuned Apertus 1.5 8B writes items backed by evidence", modelBrief, setModelBrief)}
-          {modelField("Model for the agent (chat)", "generates tool arguments, slide items and answers; Keera offers apertus-v1-5-8b and apertus-v1-5-70b for tool calling (choose without -thinking)", modelAgent, setModelAgent)}
+    <SettingsCard id="api" title="Apertus access"
+                  intro="Chat generates tool arguments and answers; the fine-tuned decision model selects actions and ranks results. Keys stay in the backend and are never sent back to the browser.">
+      <form className="flex flex-col gap-6" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+        <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+          <SettingsField label="Chat API base URL">
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={settingsInput}
+                   placeholder="https://gateway.keera.ch/api/v1" />
+          </SettingsField>
+          <SettingsField label="Chat API key">
+            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className={settingsInput}
+                   autoComplete="off"
+                   placeholder={llm.key_set ? `set (…${llm.key_last4}), leave empty to keep it` : "Enter key"} />
+          </SettingsField>
+          <SettingsField label="Generation model" hint="Writes tool arguments, slide content and answers. Choose a model with tool-call support.">
+            {options.length ? (
+              <select value={model} onChange={(e) => setModel(e.target.value)} className={settingsInput}>
+                {!options.includes(model) && <option value={model}>{model || "– choose –"}</option>}
+                {options.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ) : (
+              <input value={model} onChange={(e) => setModel(e.target.value)} className={settingsInput} />
+            )}
+          </SettingsField>
+          <SettingsField label="Decision service URL" hint="Your fine-tuned model's endpoint root or /decide URL.">
+            <input value={decisionUrl} onChange={(e) => setDecisionUrl(e.target.value)} className={settingsInput}
+                   placeholder="https://your-endpoint.endpoints.huggingface.cloud/decide" />
+          </SettingsField>
+          <SettingsField label="Decision API key">
+            <input type="password" value={decisionKey} onChange={(e) => setDecisionKey(e.target.value)} className={settingsInput}
+                   autoComplete="off"
+                   placeholder={llm.decision_key_set ? `set (…${llm.decision_key_last4}), leave empty to keep it` : "Enter decision service key"} />
+          </SettingsField>
+          <SettingsField label="Decision model" hint="Optional model identifier; leave empty to use the model served by your endpoint.">
+            <input value={decisionModel} onChange={(e) => setDecisionModel(e.target.value)} className={settingsInput} />
+          </SettingsField>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">Decision API URL</span>
-          <input value={decisionUrl} onChange={(e) => setDecisionUrl(e.target.value)} className={field}
-                 placeholder="https://your-decision-service/decide" />
-          <span className="text-[11px] text-muted-foreground">Endpoint root or full /decide URL for scoring options.</span>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">Decision API key</span>
-          <input type="password" value={decisionKey} onChange={(e) => setDecisionKey(e.target.value)}
-                 className={field} autoComplete="off"
-                 placeholder={llm.decision_key_set ? `set (…${llm.decision_key_last4}), leave empty to keep it` : "Enter decision key"} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">Decision model</span>
-          <input value={decisionModel} onChange={(e) => setDecisionModel(e.target.value)} className={field}
-                 placeholder="HX-Tfd/Apertus-1.5-8B-Decision" />
-        </label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 border-t border-secondary/10 pt-5">
           <Button type="submit" size="sm" disabled={save.isPending}>
             {save.isPending && <Loader2 className="animate-spin" />} Save
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={() => test.mutate()}
-                  disabled={test.isPending || !llm.key_set}>
+          <Button type="button" size="sm" variant="outline" onClick={() => test.mutate()} disabled={test.isPending || !llm.key_set}>
             {test.isPending && <Loader2 className="animate-spin" />} Test connection
           </Button>
+          {save.isSuccess && <span className="text-xs text-muted-foreground">Saved.</span>}
+          {test.data?.results.map((result) => (
+            <span key={result.role} className="animate-fade flex items-center gap-1.5 text-sm">
+              {result.ok ? <CheckCircle2 className="size-4 text-emerald-600" /> : <XCircle className="size-4 text-red-600" />}
+              <span className="text-muted-foreground">{result.role === "decision" ? "Decision" : "Chat"}: {result.ok ? `responds in ${result.seconds} s` : result.message}</span>
+            </span>
+          ))}
         </div>
-        {save.isSuccess && <p className="text-sm text-muted-foreground">Saved.</p>}
         <ErrorNote error={save.error || test.error || models.error} />
       </form>
-      {test.data && (
-        <ul className="flex flex-col gap-2 text-sm">
-          {test.data.results.map((r) => (
-            <li key={r.role} className="flex items-start gap-2">
-              {r.ok ? <CheckCircle2 className="mt-0.5 size-4 text-emerald-600" /> : <XCircle className="mt-0.5 size-4 text-red-600" />}
-              <span>
-                <span className="font-medium">{{ queries: "Search terms", brief: "Pitch information", agent: "Agent" }[r.role] ?? r.role}</span>
-                <span className="text-muted-foreground"> · {r.seconds} s · {r.ok ? "responds" : r.message}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    </SettingsCard>
   );
 }

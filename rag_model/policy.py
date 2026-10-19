@@ -45,6 +45,8 @@ def select_action(state: dict, tools: list) -> dict:
             continue
         if name in ("remove_items", "edit_item") and not state["items"]:
             continue
+        if name == "restore_items" and not state.get("trashed_items", 0):
+            continue
         names.append(name)
         options.append(f"{name}: {tool.description[:180]}")
     if (

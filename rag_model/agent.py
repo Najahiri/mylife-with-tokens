@@ -32,6 +32,7 @@ import copy
 import re
 import sqlite3
 import textwrap
+import threading
 import time
 import traceback
 import uuid
@@ -59,6 +60,7 @@ SESSIONS = ROOT / "data" / "sessions"
 CHANGES = (
     "add_items",
     "remove_items",
+    "restore_items",
     "edit_item",
     "update_presentation",
 )  # tools that change what the user sees
@@ -111,6 +113,13 @@ class Session:
     deck: dict = field(
         default_factory=lambda: dict(DECK)
     )  # presentation settings, edited in the UI and by the agent
+    trash: list[dict] = field(default_factory=list)  # removed items, can be restored
+    updated: float = field(
+        default_factory=time.time
+    )  # last change, for the list of conversations
+    stop: threading.Event = field(
+        default_factory=threading.Event, repr=False, compare=False
+    )  # stop button
     events: list[dict] = field(
         default_factory=list
     )  # everything the UI shows, in order
@@ -120,7 +129,11 @@ class Session:
             (i + 1 for i, p in enumerate(self.pages) if p["page_id"] == page_id), None
         )
 
+    def delete(self) -> None:
+        (SESSIONS / f"{self.id}.json").unlink(missing_ok=True)
+
     def save(self) -> None:
+        self.updated = time.time()
         SESSIONS.mkdir(parents=True, exist_ok=True)
         data = {
             "id": self.id,
@@ -132,6 +145,8 @@ class Session:
             "rejections": self.rejections,
             "notes": self.notes,
             "deck": self.deck,
+            "trash": self.trash,
+            "updated": self.updated,
             "events": self.events,
         }
         tmp = SESSIONS / f"{self.id}.json.tmp"
@@ -151,8 +166,27 @@ class Session:
             rejections=d.get("rejections", {}),
             notes=d.get("notes", []),
             deck={**DECK, **d.get("deck", {})},
+            trash=d.get("trash", []),
+            updated=d.get("updated", path.stat().st_mtime),
             events=d["events"],
         )
+
+    def title(self) -> str:
+        """The company if it is set, otherwise the start of the first message."""
+        first = next((e["text"] for e in self.events if e["type"] == "user"), "")
+        return (
+            self.deck.get("company")
+            or textwrap.shorten(first, 60, placeholder=" …")
+            or "New conversation"
+        )
+
+    def summary(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title(),
+            "updated": self.updated,
+            "items": len(self.items),
+        }
 
     def view(self) -> dict:
         return {
@@ -230,6 +264,22 @@ def _tools(max_items: int) -> list[Tool]:
         Tool(
             "remove_items",
             d["remove_items"],
+            {
+                "type": "object",
+                "required": ["titles"],
+                "properties": {
+                    "titles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                    }
+                },
+            },
+            noop,
+        ),
+        Tool(
+            "restore_items",
+            d["restore_items"],
             {
                 "type": "object",
                 "required": ["titles"],
@@ -490,12 +540,11 @@ def _add(
 
 
 def _remove(s: Session, titles: list[str]) -> tuple[str, dict]:
-    wanted = {str(t).strip().lower() for t in titles}
-    before = len(s.items)
-    s.items = [i for i in s.items if i["title"].strip().lower() not in wanted]
+    gone = _take(s, titles)
     return (
-        f"{before - len(s.items)} items removed. The list now has {len(s.items)}: {_titles(s)}.",
-        {"removed": before - len(s.items)},
+        f"{len(gone)} items removed (they can be restored with restore_items). "
+        f"The list now has {len(s.items)}: {_titles(s)}.",
+        {"removed": len(gone)},
     )
 
 
@@ -507,6 +556,7 @@ EDITABLE = (
     "relevance",
     "facts",
     "contacts",
+    "evidence",
 )
 DECK_ARGS = {
     "company": "company",
@@ -531,53 +581,82 @@ def _find(s: Session, title: str) -> int | None:
     return best[1] if best[0] >= 80 else None
 
 
-def _edit(
-    s: Session, searcher: Searcher, title: str, changes: dict
-) -> tuple[str, dict]:
-    """Change one item in place. Facts and contacts are checked against its source pages again."""
+def _edit(s: Session, title: str, changes: dict) -> tuple[str, dict]:
+    """Change one item as the user asks. The user has the last word: nothing is refused. What the source pages do
+    not back (facts, contacts, quote) is marked on the item, so the evidence view shows it."""
+    from rag_model.brief import _name_on_page
+
     i = _find(s, title)
     if i is None:
         return f"There is no item «{title}». The items are: {_titles(s)}.", {}
     old = s.items[i]
-    numbers = {p["url"]: n + 1 for n, p in enumerate(s.pages)}
-    raw = {
-        **old,
-        **{k: v for k, v in (changes or {}).items() if k in EDITABLE},
-        "sources": [
-            numbers[src["url"]] for src in old["sources"] if src["url"] in numbers
-        ],
+    changes = {
+        k: v for k, v in (changes or {}).items() if k in EDITABLE and v is not None
     }
-    raw, problems = _normalize(raw)
-    new_title = raw.get("title", "").strip().lower()
+    if not changes:
+        return (
+            f"Nothing to change in «{old['title']}»: give the fields to change in \"changes\".",
+            {},
+        )
+    if "category" in changes:
+        changes["category"] = category(str(changes["category"]))
+    if "contacts" in changes:
+        changes["contacts"] = _normalize({"contacts": changes["contacts"]})[0][
+            "contacts"
+        ]
+    if "facts" in changes:
+        changes["facts"] = [
+            str(f).strip() for f in changes["facts"] or [] if str(f).strip()
+        ]
+    new_title = str(changes.get("title", old["title"])).strip()
     if any(
-        j != i and it["title"].strip().lower() == new_title
+        j != i and it["title"].strip().lower() == new_title.lower()
         for j, it in enumerate(s.items)
     ):
-        problems.append(f"another item is already titled «{raw['title']}»")
-    if problems:
-        return f"«{old['title']}» not changed: {'; '.join(problems)}.", {}
-    docs = [
-        Document(
-            id=p["page_id"],
-            content=_page_text(p["page_id"]),
-            meta={"url": p["url"], "title": p["title"], "website": p["website"]},
+        return (
+            f"«{old['title']}» not changed: another item is already titled «{new_title}».",
+            {},
         )
-        for p in s.pages
+
+    by_url = {p["url"]: p["page_id"] for p in s.pages}
+    pages = [
+        _norm(_page_text(by_url[src["url"]]))
+        for src in old["sources"]
+        if src["url"] in by_url
     ]
-    kept, dropped = check([raw], docs, searcher)
-    if dropped:
-        return f"«{old['title']}» not changed: {'; '.join(dropped[0]['reasons'])}.", {}
-    s.items[i] = kept[0]
-    notes = kept[0]["flags"] + [
-        f"contact {c.get('name')} is not named on the source pages, removed"
-        for c in kept[0]["contacts_removed"]
+    min_ratio = config.load()["check"]["evidence_min_ratio"]
+    on_page = lambda text: any(
+        fuzz.partial_ratio(_norm(text), p) >= min_ratio for p in pages
+    )
+    unbacked = [f"fact «{f}»" for f in changes.get("facts", []) if not on_page(f)]
+    unbacked += [
+        f"contact {c['name']}"
+        for c in changes.get("contacts", [])
+        if not any(_name_on_page(c["name"], p) for p in pages)
     ]
+    if "evidence" in changes and not on_page(str(changes["evidence"])):
+        unbacked.append("quote")
+
+    item = {**old, **changes, "title": new_title}
+    item["edited"] = sorted(set(old.get("edited", [])) | set(changes))
+    item["unbacked"] = list(dict.fromkeys(old.get("unbacked", []) + unbacked))
+    note = f"changed on request: {', '.join(item['edited'])}"
+    if item["unbacked"]:
+        note += f"; not in the source: {', '.join(item['unbacked'])}"
+    item["flags"] = [
+        f for f in old.get("flags", []) if not f.startswith("changed on request")
+    ] + [note]
+    s.items[i] = item
     return (
         f"«{old['title']}» updated"
-        + (f" (now «{kept[0]['title']}»)" if kept[0]["title"] != old["title"] else "")
+        + (f" (now «{new_title}»)" if new_title != old["title"] else "")
         + "."
-        + (f" Notes: {'; '.join(notes)}." if notes else "")
-    ), {"edited": kept[0]["title"]}
+        + (
+            f" Not backed by the source pages, marked for the user: {', '.join(unbacked)}."
+            if unbacked
+            else ""
+        )
+    ), {"edited": new_title}
 
 
 def _update_deck(s: Session, args: dict) -> tuple[str, dict]:
@@ -603,6 +682,10 @@ def _state(s: Session) -> str:
         f"them with update_presentation (overview_slide, contacts_slide true/false).",
         f"- {len(s.items)} item slides:" if s.items else "- no item slides yet",
     ]
+    if s.trash:
+        lines.append(
+            f"- removed earlier (bring back with restore_items): {'; '.join(f'«{t['title']}»' for t in s.trash)}"
+        )
     for n, it in enumerate(s.items, 1):
         contacts = (
             ", ".join(c.get("name", "") for c in it.get("contacts") or []) or "none"
@@ -626,8 +709,10 @@ def _run_tool(
         return _add(s, searcher, args.get("items") or [], max_items)
     if name == "remove_items":
         return _remove(s, args.get("titles") or [])
+    if name == "restore_items":
+        return _restore(s, args.get("titles") or [], max_items)
     if name == "edit_item":
-        return _edit(s, searcher, args.get("title", ""), args.get("changes") or {})
+        return _edit(s, args.get("title", ""), args.get("changes") or {})
     if name == "update_presentation":
         return _update_deck(s, args)
     raise ValueError(f"unknown tool {name}")
@@ -635,12 +720,11 @@ def _run_tool(
 
 def remove_by_user(s: Session, titles: list[str]) -> None:
     """The user deleted slides in the UI: the items go, the agent learns it with the next message."""
-    wanted = {t.strip().lower() for t in titles}
-    gone = [i["title"] for i in s.items if i["title"].strip().lower() in wanted]
-    s.items = [i for i in s.items if i["title"].strip().lower() not in wanted]
+    gone = [g["title"] for g in _take(s, titles)]
     if gone:
         s.notes.append(
-            "The user deleted these items from the list, do not add them again: "
+            "The user deleted these items from the list. Do not add them again unless the user asks for "
+            "them back, then use restore_items: "
             + "; ".join(f"«{t}»" for t in gone)
             + "."
         )
@@ -665,6 +749,18 @@ def load_sessions() -> dict[str, Session]:
 REASONING_END = "<|inner_suffix|>"
 RAW_TOOLS = re.compile(r"<\|tools_prefix\|>(.*?)<\|tools_suffix\|>", re.S)
 MARKER = re.compile(r"<\|[a-z_]+\|>")
+
+TOOL_NAMES = (
+    "search",
+    "read_pages",
+    "add_items",
+    "remove_items",
+    "restore_items",
+    "edit_item",
+    "update_presentation",
+)
+TEXT_CALL = re.compile(r"\s*(" + "|".join(TOOL_NAMES) + r")\s*\((.*)\)\s*", re.S)
+TEXT_ARG = re.compile(r"\s*,?\s*(\w+)\s*[:=]\s*")
 
 
 def _clean(reply: ChatMessage) -> tuple[ChatMessage, str]:
@@ -692,6 +788,13 @@ def _clean(reply: ChatMessage) -> tuple[ChatMessage, str]:
                 )
             )
     text = MARKER.sub("", RAW_TOOLS.sub("", text)).strip()
+    if not calls and (call := _text_call(text)):
+        calls.append(
+            ToolCall(
+                tool_name=call[0], arguments=call[1], id=f"raw-{uuid.uuid4().hex[:8]}"
+            )
+        )
+        text = ""
     reasoning = MARKER.sub("", reasoning).strip()
     if text == (reply.text or "") and calls == list(reply.tool_calls) and not reasoning:
         return reply, ""
@@ -916,6 +1019,8 @@ def _decision_state(s: Session, text: str, pending: str | None) -> dict:
         "pages": len(s.pages),
         "read_pages": len(s.read),
         "items": len(s.items),
+        "trashed_items": len(s.trash),
+        "trash_titles": [item.get("title", "")[:60] for item in s.trash[:4]],
         "unfinished_step": pending,
         "unread_page_numbers": unread[:8],
         "read_page_numbers": sorted(s.read)[:8],
@@ -926,6 +1031,78 @@ def _decision_state(s: Session, text: str, pending: str | None) -> dict:
         "item_titles": [item.get("title", "")[:60] for item in s.items[:4]],
         "recent_messages": recent,
     }
+
+
+def _take(s: Session, titles: list[str]) -> list[dict]:
+    """Move the items with these titles from the list to the trash; returns them."""
+    found = {i for i in (_find(s, t) for t in titles) if i is not None}
+    gone = [it for n, it in enumerate(s.items) if n in found]
+    s.items = [it for n, it in enumerate(s.items) if n not in found]
+    s.trash = [
+        t for t in s.trash if t["title"] not in {g["title"] for g in gone}
+    ] + gone
+    return gone
+
+
+def _restore(s: Session, titles: list[str], max_items: int) -> tuple[str, dict]:
+    back = []
+    for t in titles:
+        scored = [
+            (fuzz.ratio(str(t).strip().lower(), it["title"].strip().lower()), n)
+            for n, it in enumerate(s.trash)
+        ]
+        score, n = max(scored, default=(0, None))
+        if n is not None and score >= 80 and len(s.items) < max_items:
+            back.append(s.trash.pop(n))
+            s.items.append(back[-1])
+    missing = len(titles) - len(back)
+    return (
+        f"{len(back)} items restored. The list now has {len(s.items)}: {_titles(s)}."
+        + (
+            f" {missing} not restored: not in the trash or the list is full."
+            if missing
+            else ""
+        ),
+        {"restored": len(back)},
+    )
+
+
+def _text_call(text: str) -> tuple[str, dict] | None:
+    """A whole answer that is one tool call written as text, `name(key: value, …)` with JSON values."""
+    m = TEXT_CALL.fullmatch(text)
+    if not m:
+        return None
+    body, args, i = m.group(2), {}, 0
+    while k := TEXT_ARG.match(body, i):
+        try:
+            args[k.group(1)], i = json.JSONDecoder().raw_decode(body, k.end())
+        except json.JSONDecodeError:
+            return None
+    return (m.group(1), args) if args and not body[i:].strip() else None
+
+
+def _close_open_calls(s: Session) -> None:
+    """After a stop, every tool call needs a result, otherwise the next request to the API is rejected."""
+    answered = {
+        result.origin.id
+        for message in s.messages
+        for result in (getattr(message, "tool_call_results", None) or [])
+    }
+    for m in list(s.messages):
+        for call in m.tool_calls:
+            if call.id not in answered:
+                s.messages.append(
+                    ChatMessage.from_tool(
+                        "Not run: the user stopped this answer.",
+                        origin=call,
+                        error=True,
+                    )
+                )
+                answered.add(call.id)
+
+
+class Stopped(Exception):
+    pass
 
 
 # ---------- loop ----------
@@ -943,6 +1120,7 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         deck=s.deck,
         notes=s.notes,
     )
+    s.stop.clear()
     events = _turn(s, text, searcher)
     status = "cancelled"
     try:
@@ -954,6 +1132,16 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
                 status = "completed"
                 break
             yield event
+    except Stopped:
+        status = "stopped"
+        _close_open_calls(s)
+        s.notes.append("The user stopped your previous answer before it was finished.")
+        event = {"type": "stopped"}
+        with trace.bind():
+            record("agent_event", output=event)
+        s.events.append(event)
+        yield event
+        s.save()
     except Exception as error:
         status = "error"
         trace.write(
@@ -991,7 +1179,12 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         prompt_version=_spec()["version"],
         system_prompt=system,
     )
-    llm = generator("agent", cfg["llm"], tools=tools)
+
+    def watch(_chunk=None):
+        if s.stop.is_set():
+            raise Stopped()
+
+    llm = generator("agent", cfg["llm"], tools=tools, on_chunk=watch)
     start = len(s.events)
 
     def emit(event: dict) -> dict:
@@ -1020,6 +1213,7 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
     answer_reconsidered = False
     generation_feedback = None
     for step in range(1, max_steps + 1):
+        watch()
         set_step(step)
         decision_state = {
             **_decision_state(s, text, pending),
@@ -1031,6 +1225,7 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         if generation_feedback:
             decision_state["generation_feedback"] = generation_feedback
         choice = select_action(decision_state, tools)
+        watch()
         # An incompatible final answer excludes answer for one reconsideration,
         # not for the rest of the conversation.
         blocked_actions.discard("answer")
@@ -1085,9 +1280,11 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         attempts = max(1, cfg["llm"].get("json_attempts", 2))
         reconsider = False
         for attempt in range(1, attempts + 1):
+            watch()
             raw_reply = run_logged(llm, messages=generation_messages, **selection)[
                 "replies"
             ][0]
+            watch()
             cut_off = raw_reply.meta.get("finish_reason") == "length"
             if cut_off and nudges >= NUDGES:
                 raise ValueError(
@@ -1214,6 +1411,7 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
                 {"type": "assistant", "text": reply.text.strip(), "final": False}
             )
         for call in reply.tool_calls:
+            watch()
             key = _call_key(call)
             record(
                 "tool_call",
@@ -1266,6 +1464,7 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
                     else {"items": len(call.arguments.get("items") or [])},
                 }
             )
+            watch()
             before_read = len(s.read)
             try:
                 result, info = _run_tool(

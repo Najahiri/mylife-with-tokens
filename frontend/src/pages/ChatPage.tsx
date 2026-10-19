@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2,
+  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Presentation, Repeat, Search, Send, Sparkles, Square, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
+import { ConversationMenu } from "@/components/ConversationMenu";
 import { DeckPanel } from "@/components/DeckPanel";
+import { SideDrawer } from "@/components/SideDrawer";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
 import { useElapsed } from "@/lib/useElapsed";
+import { cn } from "@/lib/utils";
 
 const STORE = "raglette-chat";
 const DECK_STORE = "raglette-deck";   // speaker and organisation carry over to the next conversation
@@ -39,6 +42,14 @@ export function ChatPage() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [deck, setDeck] = useState<Deck>(draftDeck);
+  // the presentation slides in by itself once the first items arrive; the slides button folds it away or back
+  const [panelOpen, setPanelOpen] = useState(false);
+  const hadItems = useRef(false);
+  function showItems(next: Item[]) {
+    setItems(next);
+    if (next.length && !hadItems.current) setPanelOpen(true);
+    hadItems.current = next.length > 0;
+  }
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
@@ -48,12 +59,12 @@ export function ChatPage() {
   const restored = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  // restore the conversation after a reload or a visit to another page (kept in the backend until it restarts)
+  // restore the conversation after a reload or a visit to another page (saved in the backend)
   useEffect(() => {
     if (restored.current || !sid) return;
     restored.current = true;
     api.chat(sid)
-      .then((s) => { setEvents(s.events); setItems(s.items); setDeck(s.deck); })
+      .then((s) => { setEvents(s.events); showItems(s.items); setDeck(s.deck); })
       .catch(() => { remember(null); setSid(null); });
   }, [sid]);
 
@@ -75,7 +86,7 @@ export function ChatPage() {
         setSid(id);
       }
       await api.sendMessage(id, text, (e) => {
-        if (e.type === "items") setItems(e.items);
+        if (e.type === "items") showItems(e.items);
         else if (e.type === "deck") setDeck(e.deck);
         else setEvents((prev) => [...prev, e]);
         if (e.type === "error") setError(new Error(e.message));
@@ -92,7 +103,7 @@ export function ChatPage() {
     setError(null);
     try {
       const s = await api.removeItems(sid, [title]);
-      setItems(s.items);
+      showItems(s.items);
       setEvents(s.events);
     } catch (e) {
       setError(e);
@@ -110,44 +121,77 @@ export function ChatPage() {
     if (sid) saveTimer.current = setTimeout(() => { api.saveDeck(sid, next).catch(setError); }, 400);
   }
 
+  function stop() {
+    if (sid) api.stopChat(sid).catch(setError);
+  }
+
+  /** Switch to a saved conversation: its steps, slides and settings; the presentation is open if it has slides. */
+  async function openConversation(id: string) {
+    if (running || id === sid) return;
+    setError(null);
+    try {
+      const s = await api.chat(id);
+      remember(id);
+      restored.current = true;
+      setSid(id);
+      setEvents(s.events);
+      hadItems.current = false;
+      setPanelOpen(false);
+      showItems(s.items);
+      setDeck(s.deck);
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   function reset() {
     remember(null);
     setSid(null);
     setEvents([]);
-    setItems([]);
+    showItems([]);
+    setPanelOpen(false);
     setDeck(draftDeck());
     setError(null);
   }
 
+  // title, overview, one per item, contacts: the same rule as rag_model/presentation.py slide_map
+  const slideCount = items.length
+    ? 1 + (deck.overview ? 1 : 0) + items.length + (deck.contacts_slide && items.some((it) => it.contacts.length) ? 1 : 0)
+    : 0;
   const results = new Map(events.filter((e): e is ToolResult => e.type === "tool_result").map((e) => [e.id, e]));
 
   return (
-    <div className="grid gap-8 pt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+    <div className="flex flex-col gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:flex-row lg:gap-0">
       {/* conversation */}
-      <section className="flex min-h-[32rem] flex-col gap-4 lg:h-[calc(100vh-9rem)]">
-        <div className="flex items-end gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="eyebrow text-primary">Agent</span>
-            <h1 className="text-4xl leading-none font-bold">Chat</h1>
-          </div>
-          <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
-            <Plus /> New conversation
+      <section className="flex min-h-[32rem] min-w-0 flex-1 flex-col gap-4 lg:min-h-0 lg:pr-4">
+        <h1 className="sr-only">Chat with the agent</h1>
+        <div className="flex h-12 shrink-0 items-end gap-2 border-b border-secondary/15 pb-2">
+          <ConversationMenu current={sid} disabled={running} onNew={reset} onOpen={openConversation}
+                            onDeleted={(id) => { if (id === sid) reset(); }}
+                            title={deck.company || events.find((e) => e.type === "user")?.text || "New conversation"} />
+          {/* arrows point where the slides would move: left to slide in, right to slide away */}
+          <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen}
+                  title={panelOpen ? "Slide the presentation away" : `Show the presentation${slideCount ? ` (${slideCount} slides)` : ""}`}
+                  aria-label={panelOpen ? "Slide the presentation away" : "Show the presentation"}>
+            <ChevronsLeft className={cn("transition-transform duration-300", panelOpen && "rotate-180")} />
           </Button>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-secondary/15 pt-4 pr-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
           {!events.length && (
-            <div className="flex max-w-prose flex-col gap-3">
-              <p className="text-xl leading-snug font-semibold text-secondary">
-                Start with the buzzwords from a company's sales pitch.
+            // welcome: centred in the empty chat, gone with the first message
+            <div className="animate-in-up m-auto flex max-w-xl flex-col gap-5 px-2 py-10 text-center">
+              <h2 className="text-[clamp(2rem,3.4vw,2.9rem)] leading-[1.05] font-bold tracking-[-0.02em] text-balance text-secondary">
+                Which company are you pitching to?
+              </h2>
+              <p className="text-base leading-relaxed text-pretty text-foreground/80">
+                Describe what it does, in a few words or with lines from its own pitch. RAGlette reads the websites of
+                Bern's research institutions and builds a slide for every partner that fits, each one backed by a quote
+                from its source.
               </p>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                RAGlette searches the websites of Bern's research institutions, reads the best matches in full and turns
-                every partner it can back with a quote from the source into a slide.
-              </p>
-              <p className="text-sm leading-relaxed text-muted-foreground">
-                Then refine the deck in your own words, for example <em>“focus on research groups”</em> or{" "}
-                <em>“find more on rehabilitation”</em>. To drop a partner, delete its slide.
+              <p className="text-sm leading-relaxed text-balance text-muted-foreground">
+                Then shape the deck right here: <em>“focus on research groups”</em>,{" "}
+                <em>“find more on rehabilitation”</em>, <em>“shorten the texts”</em>.
               </p>
             </div>
           )}
@@ -160,10 +204,11 @@ export function ChatPage() {
             if (e.type === "done") return <p key={i} className="text-[11px] text-muted-foreground">answered in {Math.round(e.took_s)} s</p>;
             if (e.type === "error") return <ErrorNote key={i} error={new Error(e.message)} />;
             if (e.type === "note") return <StepRow key={i} icon={<Trash2 />} label={e.text} />;
+            if (e.type === "stopped") return <StepRow key={i} icon={<Square />} label="Stopped" meta="what was added so far stays" />;
             return null;
           })}
           {running && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
+            <p className="animate-fade flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
               <Loader2 className="size-4 animate-spin" /> Apertus is working … {elapsed}
             </p>
           )}
@@ -171,31 +216,60 @@ export function ChatPage() {
         </div>
 
         <ErrorNote error={error} />
-        <form className="flex items-end gap-2 border-l-4 border-primary bg-cream p-3"
-              onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                    placeholder={events.length ? "Ask for changes …" : "Buzzwords, e.g. wearables, precision diabetes care, AI-first, scale-up"}
-                    aria-label="Message to the agent"
-                    className="min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-          <Button type="submit" size="sm" disabled={running || !draft.trim()}>
-            {running ? <Loader2 className="animate-spin" /> : <Send />} Send
-          </Button>
-        </form>
+        <Composer value={draft} onChange={setDraft} onSend={send} onStop={stop} running={running}
+                  placeholder={events.length ? "Ask for changes or more partners …" : "Describe the company, e.g. wearable glucose sensors for diabetes care"} />
       </section>
 
-      <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running} />
+      <SideDrawer open={panelOpen}>
+        <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running} />
+      </SideDrawer>
     </div>
   );
 }
 
+/** One line by default, grows with the text up to a few lines; Enter sends, Shift+Enter makes a new line. */
+function Composer({ value, onChange, onSend, onStop, running, placeholder }: {
+  value: string; onChange: (v: string) => void; onSend: () => void; onStop: () => void; running: boolean; placeholder: string;
+}) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [value]);
+  return (
+    <form className="flex items-end gap-2 rounded-[1.6rem] border border-secondary/15 bg-cream p-1.5 pl-5 transition-colors duration-200 focus-within:border-secondary/40"
+          onSubmit={(e) => { e.preventDefault(); onSend(); }}>
+      <textarea ref={field} value={value} onChange={(e) => onChange(e.target.value)} rows={1}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+                placeholder={placeholder} aria-label="Message to the agent"
+                className="max-h-[200px] min-w-0 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-6 outline-none" />
+      {/* while the agent works the button stops it */}
+      {running ? (
+        <Button type="button" size="icon" onClick={onStop} aria-label="Stop" title="Stop the agent">
+          <Square className="fill-current" />
+        </Button>
+      ) : (
+        <Button type="submit" size="icon" disabled={!value.trim()} aria-label="Send" title="Send (Enter)">
+          <Send />
+        </Button>
+      )}
+    </form>
+  );
+}
+
 function UserBubble({ text }: { text: string }) {
-  return <p className="max-w-[85%] self-end bg-primary px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">{text}</p>;
+  return (
+    <p className="animate-in-up max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+      {text}
+    </p>
+  );
 }
 
 function AssistantText({ text }: { text: string }) {
   if (!text) return null;
-  return <div className="max-w-[92%] border-l-4 border-primary bg-cream px-4 py-3"><Rich text={text} /></div>;
+  return <div className="animate-in-up max-w-[min(92%,56rem)] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
 }
 
 /** A collapsed agent step; the details open on click. */
@@ -209,11 +283,11 @@ function StepRow({ icon, label, meta, details, pending }: {
       {meta && <span className="text-muted-foreground">{meta}</span>}
     </span>
   );
-  if (!details) return <div className="py-0.5">{head}</div>;
+  if (!details) return <div className="animate-in-up py-0.5">{head}</div>;
   return (
-    <details className="group py-0.5">
+    <details className="group animate-in-up py-0.5">
       <summary className="flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden">
-        <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+        <ChevronRight className="size-3.5 text-muted-foreground transition-transform duration-200 group-open:rotate-90" />
         {head}
       </summary>
       <div className="mt-2 ml-5 border-l border-secondary/20 pl-3 text-xs leading-relaxed text-muted-foreground">{details}</div>
@@ -263,6 +337,11 @@ function ToolStep({ call, result }: { call: ToolCall; result?: ToolResult }) {
     const added = Number(info.added ?? 0), rejected = Number(info.rejected ?? 0);
     return <StepRow icon={<ListPlus />} label="Added items" pending={!result}
                     meta={result ? `${added} added${rejected ? ` · ${rejected} rejected by the check` : ""}` : `${args.items} items to check`}
+                    details={result ? <p className="whitespace-pre-wrap">{result.text}</p> : undefined} />;
+  }
+  if (call.name === "restore_items") {
+    return <StepRow icon={<Undo2 />} label="Restored slides" pending={!result}
+                    meta={((args.titles as string[] | undefined) ?? []).join(", ")}
                     details={result ? <p className="whitespace-pre-wrap">{result.text}</p> : undefined} />;
   }
   if (call.name === "edit_item") {

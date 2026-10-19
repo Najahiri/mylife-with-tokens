@@ -44,6 +44,7 @@ export interface ConfigField {
 export interface ConfigGroup {
   section: string;
   title: string;
+  intro?: string;
   applies: string;
   editable: boolean;
   fields: ConfigField[];
@@ -81,6 +82,8 @@ export interface Item {
   contacts: Contact[];
   contacts_removed: Contact[];
   flags: string[];
+  edited?: string[];      // fields changed on the user's request
+  unbacked?: string[];    // what the source pages do not back since those changes
 }
 
 export interface Dropped {
@@ -98,8 +101,6 @@ export interface BriefResult {
 
 export interface LlmSettings {
   base_url?: string;
-  model_queries?: string;
-  model_brief?: string;
   model_agent?: string;
   key_set: boolean;
   key_last4: string;
@@ -119,7 +120,7 @@ export interface Health {
 }
 
 export interface TestResult {
-  role: "queries" | "brief" | "agent";
+  role: "agent" | "decision";
   ok: boolean;
   seconds: number;
   message: string;
@@ -145,8 +146,36 @@ export type AgentEvent =
   | { type: "items"; items: Item[]; dropped: Dropped[] }
   | { type: "done"; took_s: number; trace: string }
   | { type: "note"; text: string }
+  | { type: "stopped" }
   | { type: "deck"; deck: Deck }
   | { type: "error"; message: string };
+
+export interface IndexJob {
+  state: "running" | "done" | "cancelled" | "error";
+  stage: string;
+  share: number;            // of the current stage, 0 … 1
+  detail: string;
+  stages: { key: string; label: string; status: "pending" | "running" | "done" | "cancelled" | "error" }[];
+  started: number;
+  finished: number | null;
+  error: string | null;
+  summary: Record<string, number>;
+  refetch: boolean;
+}
+
+export interface IndexStatus {
+  pages: number;
+  chunks: number;
+  built: number | null;     // seconds since 1970
+  job: IndexJob | null;
+}
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  updated: number;   // seconds since 1970
+  items: number;
+}
 
 export interface AgentSession {
   id: string;

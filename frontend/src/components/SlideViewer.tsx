@@ -43,7 +43,7 @@ export function SlideViewer({ request, preview, index, itemOf, locked, onRemove,
 
   return (
     <div ref={box} role="dialog" aria-modal="true" aria-label={`Slide ${index + 1} of ${count}`}
-         className="fixed inset-0 z-50 flex flex-col bg-black/92 text-white" onClick={onClose}>
+         className="animate-fade fixed inset-0 z-50 flex flex-col bg-black/92 text-white" onClick={onClose}>
       <div className="flex items-center gap-4 px-5 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
         <span className="tabular-nums text-white/70">{index + 1} / {count}</span>
         {sharp.isFetching && <Loader2 className="size-4 animate-spin text-white/50" />}
@@ -63,8 +63,9 @@ export function SlideViewer({ request, preview, index, itemOf, locked, onRemove,
         </button>
       </div>
       <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-6 sm:px-16">
-        <img src={slides[index]} alt={`Slide ${index + 1}`} onClick={(e) => e.stopPropagation()}
-             className="max-h-full max-w-full bg-white object-contain shadow-2xl" />
+        {/* key: every slide change zooms in softly */}
+        <img key={index} src={slides[index]} alt={`Slide ${index + 1}`} onClick={(e) => e.stopPropagation()}
+             className="animate-zoom max-h-full max-w-full bg-white object-contain shadow-2xl" />
         <button type="button" onClick={(e) => { e.stopPropagation(); go(-1); }} disabled={index === 0}
                 className="absolute left-2 rounded-full p-3 hover:bg-white/10 disabled:opacity-20 sm:left-4" aria-label="Previous slide">
           <ChevronLeft className="size-7" />

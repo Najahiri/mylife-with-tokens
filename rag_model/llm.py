@@ -100,7 +100,11 @@ def public_settings() -> dict:
 
 
 def generator(
-    role: str, llm_cfg: dict, schema: dict | None = None, tools: list | None = None
+    role: str,
+    llm_cfg: dict,
+    schema: dict | None = None,
+    tools: list | None = None,
+    on_chunk=None,
 ) -> OpenAIChatGenerator:
     """schema: JSON schema of the expected answer; used when the response format setting is json_schema.
     tools: Haystack tools the model may call; the answer is then free text or tool calls, no response format."""
@@ -130,7 +134,7 @@ def generator(
     elif fmt in ("json_object", "json_schema"):
         kwargs["response_format"] = {"type": "json_object"}
     # Streaming keeps data flowing while the model writes, so gateways with short timeouts do not cut long answers.
-    stream = (lambda chunk: None) if llm_cfg.get("stream", True) else None
+    stream = (on_chunk or (lambda chunk: None)) if llm_cfg.get("stream", True) else None
     return OpenAIChatGenerator(
         api_key=Secret.from_token(s["api_key"]),
         model=s[f"model_{role}"],

@@ -6,14 +6,13 @@
 The search index (Qdrant, local mode) can only be opened by one process: stop the API before running
 `python -m rag_model.search` or the indexing steps, and the other way round.
 """
-
 import base64
 import json
 import re
 import sqlite3
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -21,8 +20,9 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from indexing import index as indexer
+from indexing.update import UpdateJob
 from rag_model import agent
-from rag_model import brief as rag
 from rag_model import presentation
 from rag_model import config
 from rag_model.llm import load_settings, public_settings, save_settings
@@ -31,16 +31,18 @@ from rag_model.settings import list_models, test_connection
 from scraper import sources as source_list
 
 state: dict = {}
-sessions: dict[str, agent.Session] = {}  # agent conversations, saved in data/sessions/
+sessions: dict[str, agent.Session] = {}     # agent conversations, saved in data/sessions/
 busy: dict[str, threading.Lock] = {}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # after a fresh clone only index.sqlite is there (download, see README): build the vector store from its vectors
+    if not (ROOT / "data" / "qdrant").exists() and (ROOT / "data" / "index.sqlite").exists():
+        print("data/qdrant is missing: loading the vectors from data/index.sqlite (a few minutes, once)", flush=True)
+        indexer.load()
     state["searcher"] = Searcher()
-    state["searcher"].embed(
-        "warm up"
-    )  # load BGE-M3 once at start, not on the first request
+    state["searcher"].embed("warm up")   # load BGE-M3 once at start, not on the first request
     sessions.update(agent.load_sessions())
     busy.update({sid: threading.Lock() for sid in sessions})
     yield
@@ -51,32 +53,12 @@ app = FastAPI(title="RAGlette", lifespan=lifespan)
 
 
 # ---------- request bodies ----------
-class QueriesIn(BaseModel):
-    buzzwords: list[str] = Field(min_length=1)
-    mode: Literal["direct", "apertus"] | None = None  # default: Settings → Search terms
-
-
-class RetrieveIn(BaseModel):
-    terms: list[str] = Field(min_length=1)
-    top_k: int | None = None
-    top_n: int | None = None
-    max_per_site: int | None = None
-    min_similarity: float | None = None
-
-
-class BriefIn(BaseModel):
-    buzzwords: list[str] = Field(min_length=1)
-    page_ids: list[str]
-    queries: list[dict] | None = None  # only for the trace
-    mode: str | None = None
-
-
 class SettingsIn(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
+    model_agent: str | None = None
     model_queries: str | None = None
     model_brief: str | None = None
-    model_agent: str | None = None
     decision_url: str | None = None
     decision_api_key: str | None = None
     decision_model: str | None = None
@@ -109,13 +91,8 @@ class DeckIn(BaseModel):
     kicker: str = ""
     overview: bool = True
     contacts_slide: bool = True
-    ppi: int = Field(
-        72, ge=30, le=220
-    )  # preview resolution; the big view asks for more
-
-
-def _clean(items: list[str]) -> list[str]:
-    return list(dict.fromkeys(s.strip() for s in items if s and s.strip()))
+    ppi: int = Field(72, ge=30, le=220)   # preview resolution; the big view asks for more
+    format: Literal["pdf", "pptx"] = "pdf"   # for the export
 
 
 def _llm_error(e: Exception) -> HTTPException:
@@ -123,6 +100,13 @@ def _llm_error(e: Exception) -> HTTPException:
 
 
 # ---------- agent (chat) ----------
+@app.get("/api/agent")
+def list_sessions():
+    """Saved conversations, most recently changed first (empty ones are left out)."""
+    return {"sessions": sorted((s.summary() for s in sessions.values() if s.events),
+                               key=lambda x: x["updated"], reverse=True)}
+
+
 @app.post("/api/agent")
 def new_session(deck: DeckSettingsIn | None = None):
     s = agent.Session()
@@ -137,6 +121,18 @@ def get_session(sid: str):
     if sid not in sessions:
         raise HTTPException(404, "conversation not found (the API was restarted?)")
     return sessions[sid].view()
+
+
+@app.delete("/api/agent/{sid}")
+def delete_session(sid: str):
+    """Delete a conversation for good (its saved file; traces stay)."""
+    if sid not in sessions:
+        raise HTTPException(404, "conversation not found")
+    if busy[sid].locked():
+        raise HTTPException(409, "the agent is still working on this conversation")
+    sessions.pop(sid).delete()
+    busy.pop(sid, None)
+    return {"deleted": sid}
 
 
 @app.put("/api/agent/{sid}/deck")
@@ -155,11 +151,18 @@ def remove_items(sid: str, body: RemoveIn):
     if sid not in sessions:
         raise HTTPException(404, "conversation not found (the API was restarted?)")
     if busy[sid].locked():
-        raise HTTPException(
-            409, "the agent is still working; delete the slide when it has answered"
-        )
+        raise HTTPException(409, "the agent is still working; delete the slide when it has answered")
     agent.remove_by_user(sessions[sid], body.titles)
     return sessions[sid].view()
+
+
+@app.post("/api/agent/{sid}/stop")
+def stop_message(sid: str):
+    """Stop the running turn at the next streamed chunk or after the current service request."""
+    if sid not in sessions:
+        raise HTTPException(404, "conversation not found")
+    sessions[sid].stop.set()
+    return {"stopped": busy[sid].locked()}
 
 
 @app.post("/api/agent/{sid}/messages")
@@ -167,6 +170,8 @@ def send_message(sid: str, body: MessageIn):
     """One chat message; streams the agent's steps as server-sent events until it answers."""
     if sid not in sessions:
         raise HTTPException(404, "conversation not found (the API was restarted?)")
+    if state.get("switching") or "searcher" not in state:
+        raise HTTPException(503, "The search index is being switched to the new version; try again in a few seconds.")
     lock = busy[sid]
     if not lock.acquire(blocking=False):
         raise HTTPException(409, "the agent is still working on the previous message")
@@ -181,23 +186,13 @@ def send_message(sid: str, body: MessageIn):
             sessions[sid].save()
             lock.release()
 
-    return StreamingResponse(
-        events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
-    )
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 # ---------- presentation ----------
 def _deck(body: DeckIn) -> dict:
-    return presentation.deck_data(
-        body.items,
-        body.company,
-        body.author,
-        body.organizer,
-        body.subtitle,
-        body.kicker,
-        body.overview,
-        body.contacts_slide,
-    )
+    return presentation.deck_data(body.items, body.company, body.author, body.organizer, body.subtitle, body.kicker,
+                                  body.overview, body.contacts_slide)
 
 
 @app.post("/api/presentation/preview")
@@ -208,12 +203,8 @@ def preview(body: DeckIn):
         slides = presentation.render(data, "png", ppi=body.ppi)
     except Exception as e:
         raise HTTPException(422, f"Typst: {e}")
-    return {
-        "slides": [
-            "data:image/png;base64," + base64.b64encode(s).decode() for s in slides
-        ],
-        "map": presentation.slide_map(data),
-    }
+    return {"slides": ["data:image/png;base64," + base64.b64encode(s).decode() for s in slides],
+            "map": presentation.slide_map(data)}
 
 
 @app.get("/api/presentation/defaults")
@@ -221,71 +212,20 @@ def deck_defaults():
     return presentation.defaults()
 
 
-@app.post("/api/presentation/pdf")
-def pdf(body: DeckIn):
+EXPORT_TYPES = {"pdf": "application/pdf",
+                "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
+
+
+@app.post("/api/presentation/export")
+def export(body: DeckIn):
+    """The deck as a file: PDF, or PowerPoint with every slide as a picture and its text in the notes."""
     try:
-        data = presentation.render(_deck(body), "pdf")
+        data = presentation.pptx(_deck(body)) if body.format == "pptx" else presentation.render(_deck(body), "pdf")
     except Exception as e:
         raise HTTPException(422, f"Typst: {e}")
     name = re.sub(r"[^\w-]+", "-", body.company.strip() or "company").strip("-")
-    return Response(
-        data,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{name}-business-case.pdf"'
-        },
-    )
-
-
-# ---------- pipeline ----------
-@app.post("/api/queries")
-def queries(body: QueriesIn):
-    """B2: buzzwords -> search terms."""
-    t0 = time.time()
-    try:
-        mode = body.mode or config.load()["queries"]["mode"]
-        out = rag.search_terms(_clean(body.buzzwords), mode)
-    except RuntimeError as e:  # API not configured
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise _llm_error(e)
-    return {"queries": out, "mode": mode, "took_s": round(time.time() - t0, 1)}
-
-
-@app.post("/api/retrieve")
-def retrieve(body: RetrieveIn):
-    """B3: search terms -> selected pages."""
-    t0 = time.time()
-    pages = state["searcher"].search(
-        _clean(body.terms),
-        body.top_k,
-        body.top_n,
-        body.max_per_site,
-        body.min_similarity,
-    )
-    return {
-        "pages": [rag.page_dict(p) for p in pages],
-        "took_s": round(time.time() - t0, 1),
-    }
-
-
-@app.post("/api/brief")
-def brief(body: BriefIn):
-    """B4–B6: selected pages -> checked pitch information."""
-    try:
-        return rag.brief(
-            _clean(body.buzzwords),
-            body.page_ids,
-            state["searcher"],
-            {
-                "mode": body.mode or config.load()["queries"]["mode"],
-                "queries": body.queries,
-            },
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise _llm_error(e)
+    return Response(data, media_type=EXPORT_TYPES[body.format],
+                    headers={"Content-Disposition": f'attachment; filename="{name}-business-case.{body.format}"'})
 
 
 # ---------- settings and status ----------
@@ -349,26 +289,83 @@ def reset_config(section: str | None = None):
 
 @app.post("/api/settings/test")
 def test():
-    return {"results": test_connection(verbose=False)}
+    return {"results": test_connection(verbose=False, roles=("agent",))}   # test chat generation and the independent decision service
+
+
+# ---------- search index: status and update ----------
+class UpdateIn(BaseModel):
+    refetch: bool = False   # fetch every page again, not only new ones (takes hours)
+
+
+def switch_index(new_db, new_qdrant, progress):
+    """Make a freshly built index live without a restart: wait for running agent turns, close the current index,
+    move the new one in place (the current one is kept as *.old) and open it."""
+    state["switching"] = True            # new chat messages wait
+    try:
+        while any(lock.locked() for lock in busy.values()):
+            progress(0.1, "Waiting until the agent has answered …")
+            time.sleep(1)
+        progress(0.4, "Closing the current index …")
+        old = state.pop("searcher", None)
+        if old:
+            old.close()
+        indexer.activate(new_db, new_qdrant)
+        progress(0.7, "Opening the new index …")
+        state["searcher"] = Searcher()
+        state["searcher"].embed("warm up")
+        progress(1.0, "The new index is live.")
+    finally:
+        if "searcher" not in state:      # something went wrong: open whatever is live now
+            try:
+                state["searcher"] = Searcher()
+            except Exception as e:
+                print(f"could not open the index: {e!r}")
+        state["switching"] = False
+
+
+def _index_stats() -> dict:
+    live = ROOT / "data" / "index.sqlite"
+    if not live.exists():
+        return {"pages": 0, "chunks": 0, "built": None}
+    with closing(sqlite3.connect(f"file:{live}?mode=ro", uri=True)) as db:
+        pages, chunks = (db.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("pages", "chunks"))
+    return {"pages": pages, "chunks": chunks, "built": live.stat().st_mtime}
+
+
+@app.get("/api/index")
+def index_status():
+    job = state.get("job")
+    return {**_index_stats(), "job": job.view() if job else None}
+
+
+@app.post("/api/index/update")
+def start_update(body: UpdateIn):
+    job = state.get("job")
+    if job and job.running:
+        raise HTTPException(409, "an update is already running")
+    state["job"] = UpdateJob(body.refetch, switch_index).start()
+    return {**_index_stats(), "job": state["job"].view()}
+
+
+@app.post("/api/index/update/cancel")
+def cancel_update():
+    job = state.get("job")
+    if not job or not job.running:
+        raise HTTPException(409, "no update is running")
+    job.cancel()
+    return {**_index_stats(), "job": job.view()}
 
 
 @app.get("/api/health")
 def health():
-    db = sqlite3.connect(ROOT / "data" / "index.sqlite")
-    pages, sites = db.execute(
-        "SELECT count(*), count(DISTINCT source) FROM pages"
-    ).fetchone()
+    with closing(sqlite3.connect(ROOT / "data" / "index.sqlite")) as db:
+        pages, sites = db.execute("SELECT count(*), count(DISTINCT source) FROM pages").fetchone()
     s = public_settings()
-    chat_ready = bool(s.get("base_url") and s.get("key_set") and s.get("model_agent"))
+    llm_ready = bool(s.get("key_set") and s.get("model_agent"))
     decision_ready = bool(s.get("decision_url") and s.get("decision_key_set"))
-    return {
-        "status": "ok",
-        "pages": pages,
-        "websites": sites,
-        "llm_configured": chat_ready,
-        "decision_configured": decision_ready,
-        "agent_configured": chat_ready and decision_ready,
-    }
+    return {"status": "ok", "pages": pages, "websites": sites,
+            "llm_configured": llm_ready, "decision_configured": decision_ready,
+            "agent_configured": llm_ready and decision_ready}
 
 
 # ---------- built UI ----------
@@ -382,6 +379,4 @@ if DIST.exists():
         if path and file.is_file():
             return FileResponse(file)
         # index.html must never be cached: it points to the current build's hashed asset files
-        return FileResponse(
-            DIST / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"}
-        )
+        return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
