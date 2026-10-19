@@ -4,9 +4,10 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
 
 ## Where the deck lives
 
-- **Live deck (source of truth):** https://claude.ai/artifact/DF5dWwQ6cRKhW765f9QU1T
-  - It is a Claude artifact of the type "Slides".
-  - It is private to the owner (marc.clenin@gmail.com account). It cannot be shared from an agent.
+- **Live deck (source of truth since 2026-10-19):** https://claude.ai/artifact/LjXY2Q3CYjX8XjoizWVMKc
+  - It is a Claude artifact of the type "Slides", owned by Daniele's account (najahiri@gmail.com).
+  - It is a copy of Marc's deck (https://claude.ai/artifact/DF5dWwQ6cRKhW765f9QU1T, version 1792400666-abd4). Daniele's account could read Marc's deck but not edit it. Marc's deck is no longer updated.
+  - It is private. Only the owner can share it, from the page's Share menu. An agent cannot share it.
 - **Snapshot in this repo:** `pitch/deck/project/` holds `deck.json` and `slides/*.html`, copied at handoff time.
   - The user also edits the deck by hand in the slide editor, so the snapshot can be behind.
   - **Always read the live files first** before you change anything.
@@ -61,7 +62,7 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
   - the red bar `id="bar"` at `top:114px`.
 - **Bar width per slide:** 480 → 960 → 1440 → 1920 px. It grows like a progress bar through the magic transition.
 - **Background animation:** slides 1 and 4 have an `<x-embed>` canvas with drifting nodes that link and unlink, the same as the web app background.
-  - The embed's `<html>` and `<body>` must be painted in the slide colour: white on slide 1, navy on slide 4.
+  - The embed's `<html>` and `<body>` must be painted in the slide colour: white on slides 1 and 4.
   - A transparent embed once rendered the whole of slide 4 white.
 - **Card style:** cream, `border-radius:24px`, a navy number square, an Abhaya heading.
 - **Red is reserved for real emphasis.** The user objected to a red "Sovereignty" card for no reason.
@@ -87,34 +88,76 @@ This is the state of the pitch deck for **RAGlette** (Hack Apertus, team *Mylife
 
 1. **cover**
    - Large "RAGlette" wordmark with a tagline: "Ask in your own words. RAGlette finds the people and expertise across Bern’s research websites, with the source for every hit."
-   - On the right, an inline SVG **logo**: a navy badge with a red ring, holding a raclette half wheel that melts. The cheese holes are linked as a network, and one red highlighted node is "the hit".
-   - The user asked for "a cool logo" in place of an app screenshot.
+   - Under it the tagline (Abhaya, 88 px, one line): "Cheesy name, solid sources." with "solid sources." in red. The user chose it.
+   - The SVG raclette logo was removed at the user's request (2026-10-19). Taglines they turned down: "What Bern brings to the table" and "Hungry for expertise? …".
    - Footer columns:
      - TEAM: "Mylife with Tokens / Daniele, Han, Marc", which the user typed on two lines;
      - CHALLENGE;
      - EVENT: Hack Apertus.
 2. **problem**
-   - Headline: "A company with a need. / Research that could meet it." Body text: "Between them there is no direct interface…" (the user edited this by hand).
+   - Headline: "A **company** with a need. / **Research** that could meet it."
+     - The heading is Abhaya at weight 500, with only "company" and "Research" in bold (700). The user asked for this.
+     - That is why `deck.json` loads Abhaya at weights 500;600;700;800.
+   - Body text: "Building an interface between the two. Matching a company…" (the user edited this by hand).
    - Top right: the **screen recording** of the real app (dark mode). A company is typed in, the agent steps run and the slides appear; it is sped up to 31 s, from a real 95 s run.
    - Caption: "A real run, sped up: 95 seconds from question to slides."
+   - The recording and its caption share **one click step** (`data-build-in="fade 9"`, no `auto`). After the three cards, they appear on the presenter's next press. This is the one deliberate exception to "everything automatic", at the user's request. The speaker note marks the moment with "[Next]".
    - "WHY IT IS HARD": three cards, all navy, appearing automatically:
      1. **Scattered and convoluted:** 41 websites, 18,332 pages, three languages.
      2. **Contained run time:** minutes, not hours; capped agent steps.
      3. **Sovereignty:** Apertus, the open Swiss model, and a search database we build and run ourselves.
 3. **solution**
    - Headline: "Five parts, one conversation."
-   - A pinned component diagram:
-     - Interface band (Sources, Settings, Chat, Slide preview);
-     - **Scraping & indexing** lane (Websites → Crawl → Clean & split → Embed);
-     - **RAG** dashed red frame *between* indexing and Apertus (Search index, Search, Read pages);
-     - **Apertus 70B** navy panel (Orchestrator, Compose), with "calls" / "results" connectors to RAG and "message" / "answer" connectors to Chat;
-     - **Quote check** (red) → **Export** (Typst · PDF · PowerPoint), with a connector back up to the Slide preview;
-     - a legend.
-   - All boxes are pinned with explicit `left`/`top`/`width`. Read the coordinates off the file before you move anything, and keep connector ends on box edges.
-4. **merci**
-   - Navy background with the node animation and a huge "Merci." with a red full stop.
-   - "DANKE · GRAZIE · GRAZIA · THANK YOU", then "Questions? Let’s try it live, with a company of your choice."
+   - Reworked on 2026-10-19 after the user's feedback: too many colours and styles, texts not fitting, boxes not equal or equidistant, an arrow overlapping its box. The "1 Interface" title used to take a full row inside its band.
+   - Each part's title (30 px Abhaya heading, `white-space:nowrap`, title box 280 px wide) sits **above** its box. There are **no number squares**: the user found part numbers misleading.
+     - "Interface" is at top 340.
+     - "Indexing", "RAG", "Apertus 70B/8B" and "Export" are at top 520.
+   - No overlays any more: the plain diagram. The examples moved to slide 4, `examples`.
+   - Earlier overlay versions were all rejected: numbered flow badges, code snippets, full prompt quotes, dark cards, and light cards on the arrows.
+   - Interface:
+     - one cream band, 1664 × 76 px at top 400;
+     - inside it, three white buttons, 296 × 52 px at top 412 and lane x + 24, each above its lane: Sources · Settings, Chat, Slide preview.
+     - The user rejected a version with three separate cream boxes and no band.
+   - Lanes:
+     - four equal cream lanes, 344 × 320 px at top 580 (ending at 900), with 96 px gaps, at x = 128, 568, 1008 and 1448;
+     - each lane holds three white two-line items: a bold navy title over a grey detail, each line at most about 18 characters.
+   - Lane 5 is "Export" (Typst / Download / Preview).
+     - The user had the "Quote check" item removed. The quote check still exists in the code (`rag_model/brief.py`); it is just not on the slide.
+   - Lane 4's title is "Apertus 70B/8B": the 8B is the alternative, as the user asked.
+   - Arrows: one colour, #5c6b80.
+     - The vertical arrows run at lane x + 300 (x = 428, 1308, 1748): inside the buttons, and 20 px to the right of the titles, which end at lane x + 280. They have no labels.
+     - Chat ↔ Apertus is a single arrow with two heads.
+     - The horizontal arrows are at lane mid-height (y 740). Between RAG and Apertus there are two arrows: "calls" at y 710 and "hits" at y 770.
+   - There is no red inside the diagram and no legend.
+4. **examples** (added 2026-10-19), "From web page to slide."
+   - Same header as slide 3: 02 HOW IT WORKS active, bar 1440.
+   - Seven cream cards in a 4 + 3 grid. Each card is 392 × 280 px, with columns at x = 128, 552, 976, 1400 and rows at top 340 and 652.
+   - Each card has a red label "N · …" and rises in automatically. Arrows join 1→2, 3→4, 5→6 and 6→7.
+     1. SCRAPED HTML: real HTML from https://www.dcberne.com/en/four-dcb-professorships-advance-research-in-diabetes-technology/, in JetBrains Mono, at most 24 characters per line. That is why `deck.json` has the JetBrains Mono face again.
+     2. CLEANED TEXT: the real trafilatura output of that page (haystack `HTMLToDocument`), then "→ ~160-word passages, BGE-M3".
+     3. CHAT: "Start-up developing wearable glucose sensors".
+     4. SEARCH PASSAGES: two example HyDE passages. These are illustrative.
+     5. PAGES FOUND: "[1] dcberne.com · Four DCB professorships …", "[2] … up to 30 pages". This is an example result, not from a logged run.
+     6. ITEM + QUOTE: title "DCB diabetes technology professorships", with a real quote from the page and "— page [1]".
+     7. SLIDE (double width): a mini item slide (RESEARCH, title, quote, "Source: dcberne.com").
+   - The user asked for this slide: "scraping shows the html, then the html is cleaned and fed to the RAG; the chat query, the array of sentences fed to the RAG, a sample of the results, and similar examples for the rest".
+
+5. **merci**
+   - Light theme since 2026-10-19, at the user's request:
+     - white background with the same light node animation as the cover;
+     - the navy header band like the other slides;
+     - a huge navy "Merci." with a red full stop.
+   - "DANKE · GRAZIE · GRAZIA · THANK YOU": with Merci, these are the four national languages (German, Italian, Romansh) plus English.
+   - Then "Questions? Bring us a company’s need, and we’ll find the research to meet it." This echoes the slide 2 headline. The user rejected "Let’s try it live".
    - Footer with the team.
+6. **bonus** (added 2026-10-19)
+   - Comes after Merci in `order`. It has no section in `sections`. The header nav shows 01–03 with none highlighted, so the earlier slides don't mention it. The user wants it kept out of the nav ("hidden throughout the presentation").
+   - It does **not** carry the `hidden` attribute, so Present mode shows it after Merci. Add `hidden` to its `<section>` to skip it.
+   - Headline: "Bonus 🧀". The user chose this wording and asked for the emoji.
+   - Ten cheese puns in cream cards: 2 columns × 5 rows, each 816 × 100 px, at top 352 + row × 120. They have **no** build-in: the user wants them all on screen as soon as the slide appears. (Automatic steps are always 0.52 s apart, `buildMs` 380 + 140, and can't be slowed down.)
+     - Text is Abhaya 34 px, line-height 1.1. Two lines fit; three would not.
+     - The last two are the user's own: "Scrape it till you make it." and "Fitting industry’s appetite for expertise."
+   - The same footer as Merci, at `bottom:64px`: "RAGlette · Mylife with Tokens: Daniele, Han, Marc · built at Hack Apertus …".
 
 All slides have English speaker notes in an `<aside>`.
 
@@ -146,8 +189,10 @@ All slides have English speaker notes in an `<aside>`.
 
 ## Assets in the deck
 
-- `/_blob/658297933d2fd0760f1dc097202d9d87`: demo video, MP4, 1280×800, 31 s.
-- `/_blob/ece945f14385054d112770a1cc26083c`: the video's still frame (the final state).
+These are the IDs in the new deck. Marc's deck uses other IDs for the same files.
+
+- `/_blob/2235d53f1c61bb27e413963029aeebfc`: demo video, MP4, 1280×800, 31 s.
+- `/_blob/b84528431d606e1ea4a11c915118afc8`: the video's still frame (the final state).
 
 ## Re-recording the video or a screenshot
 
@@ -177,9 +222,11 @@ Scripts are in `pitch/tools/`. They drive headless Chromium over the DevTools pr
 
 - **Nobody has visually checked the latest slides.** The last agent never rendered them.
 - Things to verify in Present mode:
-  - the logo on slide 1 renders and pops in;
-  - the slide 2 video starts automatically;
+  - the slide 2 video plays once it has been revealed by the click;
   - the "calls" / "results" labels on slide 3 fit the 112 px gap;
-  - slide 4 is no longer white.
 - A demo conversation, "Start-up developing wearable glucose sensors", exists in the app from the recording. Its title slide shows the placeholder "Company".
 - The user is going through the slides one by one with feedback. Slide 4 has not been reviewed yet.
+- Changed in the copy (2026-10-19):
+  - Slide 2, card 3 now reads "Apertus, the open Swiss model, and a search index we build and run ourselves." The shorter text makes the three cards the same height.
+  - The slide 4 speaker note now uses the Research Navigator framing; it no longer says "build its pitch deck live".
+  - The snapshot now includes the hand edit of slide 3 ("by meaning, with HyDE").
