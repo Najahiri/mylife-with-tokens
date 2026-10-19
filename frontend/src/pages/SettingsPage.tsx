@@ -18,13 +18,14 @@ export function SettingsPage() {
   const sections = [{ id: "api", title: "Apertus access" }, ...config.data.groups.map((g) => ({ id: g.section, title: g.title }))];
 
   return (
-    <div className="animate-fade mx-auto w-full max-w-6xl pt-10 pb-24">
+    // the cards are centred on the page; the section links float in the free margin to their left (wide screens)
+    <div className="animate-fade mx-auto w-full max-w-3xl pt-10 pb-24">
       <div className="flex flex-col gap-2">
         <h1 className="text-5xl leading-none font-bold tracking-[-0.02em]">Settings</h1>
         <p className="text-sm text-muted-foreground">Changes apply to all conversations until they are reset.</p>
       </div>
-      <div className="mt-10 grid gap-10 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <nav aria-label="Settings sections" className="hidden lg:block">
+      <div className="relative mt-10">
+        <nav aria-label="Settings sections" className="absolute inset-y-0 right-full mr-10 hidden w-44 xl:block">
           <ul className="sticky top-6 flex flex-col gap-0.5">
             {sections.map((s) => (
               <li key={s.id}>

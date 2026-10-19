@@ -10,7 +10,6 @@ CLI for testing:
 import argparse
 import textwrap
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 from haystack import Document, Pipeline

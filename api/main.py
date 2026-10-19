@@ -11,7 +11,6 @@ import json
 import re
 import sqlite3
 import threading
-import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -21,7 +20,6 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from rag_model import agent
-from rag_model import brief as rag
 from rag_model import presentation
 from rag_model import config
 from rag_model.llm import load_settings, public_settings, save_settings
@@ -53,31 +51,9 @@ app = FastAPI(title="RAGlette", lifespan=lifespan)
 
 
 # ---------- request bodies ----------
-class QueriesIn(BaseModel):
-    buzzwords: list[str] = Field(min_length=1)
-    mode: Literal["direct", "apertus"] | None = None   # default: Settings → Search terms
-
-
-class RetrieveIn(BaseModel):
-    terms: list[str] = Field(min_length=1)
-    top_k: int | None = None
-    top_n: int | None = None
-    max_per_site: int | None = None
-    min_similarity: float | None = None
-
-
-class BriefIn(BaseModel):
-    buzzwords: list[str] = Field(min_length=1)
-    page_ids: list[str]
-    queries: list[dict] | None = None     # only for the trace
-    mode: str | None = None
-
-
 class SettingsIn(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
-    model_queries: str | None = None
-    model_brief: str | None = None
     model_agent: str | None = None
 
 
@@ -110,10 +86,6 @@ class DeckIn(BaseModel):
     contacts_slide: bool = True
     ppi: int = Field(72, ge=30, le=220)   # preview resolution; the big view asks for more
     format: Literal["pdf", "pptx"] = "pdf"   # for the export
-
-
-def _clean(items: list[str]) -> list[str]:
-    return list(dict.fromkeys(s.strip() for s in items if s and s.strip()))
 
 
 def _llm_error(e: Exception) -> HTTPException:
@@ -238,41 +210,6 @@ def export(body: DeckIn):
                     headers={"Content-Disposition": f'attachment; filename="{name}-business-case.{body.format}"'})
 
 
-# ---------- pipeline ----------
-@app.post("/api/queries")
-def queries(body: QueriesIn):
-    """B2: buzzwords -> search terms."""
-    t0 = time.time()
-    try:
-        mode = body.mode or config.load()["queries"]["mode"]
-        out = rag.search_terms(_clean(body.buzzwords), mode)
-    except RuntimeError as e:      # API not configured
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise _llm_error(e)
-    return {"queries": out, "mode": mode, "took_s": round(time.time() - t0, 1)}
-
-
-@app.post("/api/retrieve")
-def retrieve(body: RetrieveIn):
-    """B3: search terms -> selected pages."""
-    t0 = time.time()
-    pages = state["searcher"].search(_clean(body.terms), body.top_k, body.top_n, body.max_per_site, body.min_similarity)
-    return {"pages": [rag.page_dict(p) for p in pages], "took_s": round(time.time() - t0, 1)}
-
-
-@app.post("/api/brief")
-def brief(body: BriefIn):
-    """B4–B6: selected pages -> checked pitch information."""
-    try:
-        return rag.brief(_clean(body.buzzwords), body.page_ids, state["searcher"],
-                         {"mode": body.mode or config.load()["queries"]["mode"], "queries": body.queries})
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise _llm_error(e)
-
-
 # ---------- settings and status ----------
 @app.get("/api/settings")
 def get_settings():
@@ -343,7 +280,7 @@ def health():
     pages, sites = db.execute("SELECT count(*), count(DISTINCT source) FROM pages").fetchone()
     s = public_settings()
     return {"status": "ok", "pages": pages, "websites": sites,
-            "llm_configured": bool(s.get("key_set") and s.get("model_queries") and s.get("model_brief"))}
+            "llm_configured": bool(s.get("key_set") and s.get("model_agent"))}
 
 
 # ---------- built UI ----------

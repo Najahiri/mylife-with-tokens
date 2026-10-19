@@ -101,8 +101,6 @@ export interface BriefResult {
 
 export interface LlmSettings {
   base_url?: string;
-  model_queries?: string;
-  model_brief?: string;
   model_agent?: string;
   key_set: boolean;
   key_last4: string;
@@ -116,7 +114,7 @@ export interface Health {
 }
 
 export interface TestResult {
-  role: "queries" | "brief" | "agent";
+  role: "agent";
   ok: boolean;
   seconds: number;
   message: string;

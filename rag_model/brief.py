@@ -18,7 +18,6 @@ import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from pathlib import Path
 
 import yaml
 from haystack import Document, Pipeline

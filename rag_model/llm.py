@@ -14,7 +14,8 @@ from haystack.utils import Secret
 
 ROOT = Path(__file__).resolve().parent.parent
 SETTINGS_FILE = ROOT / "data" / "settings.json"
-ROLES = ("queries", "brief", "agent")   # B2, B4 and the orchestrator; one model per role
+ROLES = ("agent",)   # the chat agent; the CLI pipeline in rag_model/brief.py uses the same model unless
+                     # model_queries / model_brief are set in data/settings.json
 
 
 def load_settings() -> dict:
@@ -48,7 +49,8 @@ def generator(role: str, llm_cfg: dict, schema: dict | None = None, tools: list 
     """schema: JSON schema of the expected answer; used when the response format setting is json_schema.
     tools: Haystack tools the model may call; the answer is then free text or tool calls, no response format."""
     s = load_settings()
-    missing = [k for k in ("base_url", "api_key", f"model_{role}") if not s.get(k)]
+    model = s.get(f"model_{role}") or s.get("model_agent")
+    missing = [k for k, v in (("base_url", s.get("base_url")), ("api_key", s.get("api_key")), ("model_agent", model)) if not v]
     if missing:
         raise RuntimeError(f"Apertus API not configured, missing: {', '.join(missing)} "
                            f"(set them in the UI settings or as APERTUS_* environment variables)")
@@ -64,7 +66,7 @@ def generator(role: str, llm_cfg: dict, schema: dict | None = None, tools: list 
         kwargs["response_format"] = {"type": "json_object"}
     # Streaming keeps data flowing while the model writes, so gateways with short timeouts do not cut long answers.
     stream = (lambda chunk: None) if llm_cfg.get("stream", True) else None
-    return OpenAIChatGenerator(api_key=Secret.from_token(s["api_key"]), model=s[f"model_{role}"],
+    return OpenAIChatGenerator(api_key=Secret.from_token(s["api_key"]), model=model,
                                api_base_url=s["base_url"], generation_kwargs=kwargs, streaming_callback=stream, tools=tools,
                                timeout=llm_cfg.get("timeout", 300), max_retries=llm_cfg.get("max_retries", 2))
 

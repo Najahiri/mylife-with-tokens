@@ -46,8 +46,7 @@ def main():
         current = load_settings()
         ask = lambda label, key: input(f"{label} [{current.get(key, '')}]: ").strip() or current.get(key, "")
         update = {"base_url": ask("API base URL (OpenAI-compatible, usually ends with /v1)", "base_url"),
-                  "model_queries": ask("Model for search terms (B2)", "model_queries"),
-                  "model_brief": ask("Model for the pitch information (B4)", "model_brief")}
+                  "model_agent": ask("Model for the agent (needs tool calls, e.g. apertus-v1-5-70b)", "model_agent")}
         key = getpass.getpass("API key (hidden, Enter keeps the current one): ").strip()
         if key:
             update["api_key"] = key
@@ -57,7 +56,7 @@ def main():
             print("models offered by the API:\n  " + "\n  ".join(list_models()))
         except Exception as e:
             print(f"could not list models: {e}")
-        if update["model_queries"] and update["model_brief"]:
+        if update["model_agent"]:
             print("testing connection …")
             test_connection()
         else:
