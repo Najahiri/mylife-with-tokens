@@ -4,7 +4,8 @@
     read_pages(pages)     full page texts (B4.1)
     add_items(items)      the agent composes the items itself (replaces B4.3); B5 checks them, accepted ones
                           join the list, the reasons for rejected ones go back to the agent
-    remove_items(titles)  takes items off the list (e.g. when the user asks)
+    remove_items(titles)  takes items off the list (e.g. when the user asks); they go to the trash
+    restore_items(titles)            brings items back from the trash, unchanged (they were checked already)
     edit_item(title, changes)        changes one item (text, title, category, facts, contacts); checked again
     update_presentation(...)         title-slide texts and which extra slides are shown
 
@@ -51,7 +52,7 @@ from rag_model.search import ROOT, Searcher
 
 SESSIONS = ROOT / "data" / "sessions"
 
-CHANGES = ("add_items", "remove_items", "edit_item", "update_presentation")   # tools that change what the user sees
+CHANGES = ("add_items", "remove_items", "restore_items", "edit_item", "update_presentation")   # tools that change what the user sees
 NUDGES = 3
 CUT_OFF = ("Your last answer was cut off at the length limit. Work in smaller steps: add at most 5 items per "
            "add_items call, and keep your text short.")
@@ -74,6 +75,7 @@ class Session:
     rejections: dict[str, int] = field(default_factory=dict)   # title -> times rejected
     notes: list[str] = field(default_factory=list)       # for the agent with the next message (e.g. user deletions)
     deck: dict = field(default_factory=lambda: dict(DECK))   # presentation settings, edited in the UI and by the agent
+    trash: list[dict] = field(default_factory=list)      # removed items, can be restored
     events: list[dict] = field(default_factory=list)     # everything the UI shows, in order
 
     def number(self, page_id: str) -> int | None:
@@ -83,7 +85,8 @@ class Session:
         SESSIONS.mkdir(parents=True, exist_ok=True)
         data = {"id": self.id, "messages": [m.to_dict() for m in self.messages], "pages": self.pages,
                 "read": sorted(self.read), "items": self.items, "dropped": self.dropped,
-                "rejections": self.rejections, "notes": self.notes, "deck": self.deck, "events": self.events}
+                "rejections": self.rejections, "notes": self.notes, "deck": self.deck, "trash": self.trash,
+                "events": self.events}
         tmp = SESSIONS / f"{self.id}.json.tmp"
         tmp.write_text(json.dumps(data, ensure_ascii=False, default=str))
         tmp.replace(SESSIONS / f"{self.id}.json")
@@ -93,7 +96,8 @@ class Session:
         d = json.loads(path.read_text())
         return cls(id=d["id"], messages=[ChatMessage.from_dict(m) for m in d["messages"]], pages=d["pages"],
                    read=set(d["read"]), items=d["items"], dropped=d["dropped"], rejections=d.get("rejections", {}),
-                   notes=d.get("notes", []), deck={**DECK, **d.get("deck", {})}, events=d["events"])
+                   notes=d.get("notes", []), deck={**DECK, **d.get("deck", {})}, trash=d.get("trash", []),
+                   events=d["events"])
 
     def view(self) -> dict:
         return {"id": self.id, "events": self.events, "pages": self.pages, "read": sorted(self.read),
@@ -120,6 +124,8 @@ def _tools(max_items: int) -> list[Tool]:
         Tool("add_items", d["add_items"], {"type": "object", "required": ["items"], "properties": {
             "items": _item_schema(max_items)}}, noop),
         Tool("remove_items", d["remove_items"], {"type": "object", "required": ["titles"], "properties": {
+            "titles": {"type": "array", "items": {"type": "string"}, "minItems": 1}}}, noop),
+        Tool("restore_items", d["restore_items"], {"type": "object", "required": ["titles"], "properties": {
             "titles": {"type": "array", "items": {"type": "string"}, "minItems": 1}}}, noop),
         Tool("edit_item", d["edit_item"], {"type": "object", "required": ["title", "changes"], "properties": {
             "title": {"type": "string"},
@@ -242,20 +248,41 @@ def _add(s: Session, searcher: Searcher, items: list[dict], max_items: int) -> t
     for k in kept:
         notes = k["flags"] + [f"contact {c.get('name')} is not named on the cited pages, removed"
                               for c in k["contacts_removed"]]
-        if notes:
-            lines.append(f"«{k['title']}»: {'; '.join(notes)}.")
+        if notes:   # the item itself was added: say so, models read these notes as a rejection otherwise
+            lines.append(f"«{k['title']}» is on the list. Only these details were left out: {'; '.join(notes)}.")
     if dropped:
         lines.append("To fix a rejected item, copy its quote word for word from a cited page and add only that "
                      "item again. Otherwise leave it out.")
     return "\n".join(lines), {"added": len(kept) - len(full), "rejected": len(dropped)}
 
 
+def _take(s: Session, titles: list[str]) -> list[dict]:
+    """Move the items with these titles from the list to the trash; returns them."""
+    found = {i for i in (_find(s, t) for t in titles) if i is not None}
+    gone = [it for n, it in enumerate(s.items) if n in found]
+    s.items = [it for n, it in enumerate(s.items) if n not in found]
+    s.trash = [t for t in s.trash if t["title"] not in {g["title"] for g in gone}] + gone
+    return gone
+
+
 def _remove(s: Session, titles: list[str]) -> tuple[str, dict]:
-    wanted = {str(t).strip().lower() for t in titles}
-    before = len(s.items)
-    s.items = [i for i in s.items if i["title"].strip().lower() not in wanted]
-    return (f"{before - len(s.items)} items removed. The list now has {len(s.items)}: {_titles(s)}.",
-            {"removed": before - len(s.items)})
+    gone = _take(s, titles)
+    return (f"{len(gone)} items removed (they can be restored with restore_items). "
+            f"The list now has {len(s.items)}: {_titles(s)}.", {"removed": len(gone)})
+
+
+def _restore(s: Session, titles: list[str], max_items: int) -> tuple[str, dict]:
+    back = []
+    for t in titles:
+        scored = [(fuzz.ratio(str(t).strip().lower(), it["title"].strip().lower()), n) for n, it in enumerate(s.trash)]
+        score, n = max(scored, default=(0, None))
+        if n is not None and score >= 80 and len(s.items) < max_items:
+            back.append(s.trash.pop(n))
+            s.items.append(back[-1])
+    missing = len(titles) - len(back)
+    return (f"{len(back)} items restored. The list now has {len(s.items)}: {_titles(s)}."
+            + (f" {missing} not restored: not in the trash or the list is full." if missing else ""),
+            {"restored": len(back)})
 
 
 EDITABLE = ("title", "category", "organisation", "summary", "relevance", "facts", "contacts")
@@ -316,6 +343,8 @@ def _state(s: Session) -> str:
              f"contacts slide: {'shown' if d['contacts_slide'] else 'hidden'}. These two are not items: show or hide "
              f"them with update_presentation (overview_slide, contacts_slide true/false).",
              f"- {len(s.items)} item slides:" if s.items else "- no item slides yet"]
+    if s.trash:
+        lines.append(f"- removed earlier (bring back with restore_items): {'; '.join(f'«{t['title']}»' for t in s.trash)}")
     for n, it in enumerate(s.items, 1):
         contacts = ", ".join(c.get("name", "") for c in it.get("contacts") or []) or "none"
         lines.append(f"  {n}. «{it['title']}» [{it.get('category', '')}] {it.get('organisation', '')} | summary: "
@@ -333,6 +362,8 @@ def _run_tool(s: Session, searcher: Searcher, name: str, args: dict, max_items: 
         return _add(s, searcher, args.get("items") or [], max_items)
     if name == "remove_items":
         return _remove(s, args.get("titles") or [])
+    if name == "restore_items":
+        return _restore(s, args.get("titles") or [], max_items)
     if name == "edit_item":
         return _edit(s, searcher, args.get("title", ""), args.get("changes") or {})
     if name == "update_presentation":
@@ -342,12 +373,10 @@ def _run_tool(s: Session, searcher: Searcher, name: str, args: dict, max_items: 
 
 def remove_by_user(s: Session, titles: list[str]) -> None:
     """The user deleted slides in the UI: the items go, the agent learns it with the next message."""
-    wanted = {t.strip().lower() for t in titles}
-    gone = [i["title"] for i in s.items if i["title"].strip().lower() in wanted]
-    s.items = [i for i in s.items if i["title"].strip().lower() not in wanted]
+    gone = [g["title"] for g in _take(s, titles)]
     if gone:
-        s.notes.append("The user deleted these items from the list, do not add them again: "
-                       + "; ".join(f"«{t}»" for t in gone) + ".")
+        s.notes.append("The user deleted these items from the list. Do not add them again unless the user asks for "
+                       "them back, then use restore_items: " + "; ".join(f"«{t}»" for t in gone) + ".")
         s.events.append({"type": "note", "text": "Removed from the presentation: " + ", ".join(gone)})
         s.save()
 

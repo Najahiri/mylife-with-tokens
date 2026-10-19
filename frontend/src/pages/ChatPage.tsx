@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2,
+  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
@@ -263,6 +263,11 @@ function ToolStep({ call, result }: { call: ToolCall; result?: ToolResult }) {
     const added = Number(info.added ?? 0), rejected = Number(info.rejected ?? 0);
     return <StepRow icon={<ListPlus />} label="Added items" pending={!result}
                     meta={result ? `${added} added${rejected ? ` · ${rejected} rejected by the check` : ""}` : `${args.items} items to check`}
+                    details={result ? <p className="whitespace-pre-wrap">{result.text}</p> : undefined} />;
+  }
+  if (call.name === "restore_items") {
+    return <StepRow icon={<Undo2 />} label="Restored slides" pending={!result}
+                    meta={((args.titles as string[] | undefined) ?? []).join(", ")}
                     details={result ? <p className="whitespace-pre-wrap">{result.text}</p> : undefined} />;
   }
   if (call.name === "edit_item") {
