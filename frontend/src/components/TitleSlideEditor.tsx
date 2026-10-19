@@ -13,12 +13,13 @@ export function TitleSlideEditor({ deck, defaults, onDeck, onDone }: {
   onDeck: (change: Partial<Deck>) => void;
   onDone: () => void;
 }) {
+  // style: how the text looks on the slide, so the form reads like the slide
   const field = (key: "company" | "subtitle" | "kicker" | "author" | "organizer", label: string, placeholder?: string,
-                 className?: string) => (
-    <label className={cn("flex flex-col gap-1.5", className)}>
+                 style?: string) => (
+    <label className="flex flex-col gap-1.5">
       <span className="text-xs font-semibold text-secondary">{label}</span>
       <input value={deck[key]} placeholder={placeholder} onChange={(e) => onDeck({ [key]: e.target.value })}
-             className={cn(input, key === "company" && "py-2.5 text-base font-semibold")} />
+             className={cn(input, style)} />
     </label>
   );
   const chip = (key: "overview" | "contacts_slide", label: string) => (
@@ -33,13 +34,14 @@ export function TitleSlideEditor({ deck, defaults, onDeck, onDone }: {
   return (
     <form className="animate-in-up flex flex-col gap-4 rounded-3xl bg-cream p-5"
           onSubmit={(e) => { e.preventDefault(); onDone(); }}>
-      {field("company", "Company", "Company name")}
-      {field("subtitle", "Subtitle", defaults?.subtitle)}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* same order as on the title slide: label, company, subtitle, and speaker with unit at the bottom left */}
+      <div className="sm:max-w-[50%]">{field("kicker", "Label above the title", defaults?.kicker, "text-xs font-bold text-primary placeholder:text-primary/50")}</div>
+      {field("company", "Company", "Company name", "py-2.5 text-xl font-semibold")}
+      {field("subtitle", "Subtitle", defaults?.subtitle, "text-base text-muted-foreground")}
+      <div className="flex flex-col gap-3 pt-2 sm:max-w-[50%]">
         {field("author", "Speaker", "Name")}
         {field("organizer", "Organisation", "Unit, shown below the speaker")}
       </div>
-      {field("kicker", "Label above the title", defaults?.kicker, "sm:max-w-[50%]")}
       <div className="flex flex-wrap items-center gap-2 border-t border-secondary/10 pt-4">
         <span className="mr-1 text-xs font-semibold text-secondary">Extra slides</span>
         {chip("overview", "Overview (at a glance)")}
