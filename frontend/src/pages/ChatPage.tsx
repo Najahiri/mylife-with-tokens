@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
+import { ConversationMenu } from "@/components/ConversationMenu";
 import { DeckPanel } from "@/components/DeckPanel";
 import { SideDrawer } from "@/components/SideDrawer";
 import { ErrorNote } from "@/components/Step";
@@ -58,7 +59,7 @@ export function ChatPage() {
   const restored = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  // restore the conversation after a reload or a visit to another page (kept in the backend until it restarts)
+  // restore the conversation after a reload or a visit to another page (saved in the backend)
   useEffect(() => {
     if (restored.current || !sid) return;
     restored.current = true;
@@ -120,6 +121,25 @@ export function ChatPage() {
     if (sid) saveTimer.current = setTimeout(() => { api.saveDeck(sid, next).catch(setError); }, 400);
   }
 
+  /** Switch to a saved conversation: its steps, slides and settings; the presentation is open if it has slides. */
+  async function openConversation(id: string) {
+    if (running || id === sid) return;
+    setError(null);
+    try {
+      const s = await api.chat(id);
+      remember(id);
+      restored.current = true;
+      setSid(id);
+      setEvents(s.events);
+      hadItems.current = false;
+      setPanelOpen(false);
+      showItems(s.items);
+      setDeck(s.deck);
+    } catch (e) {
+      setError(e);
+    }
+  }
+
   function reset() {
     remember(null);
     setSid(null);
@@ -142,11 +162,10 @@ export function ChatPage() {
       <section className="flex min-h-[32rem] min-w-0 flex-1 flex-col gap-4 lg:min-h-0 lg:pr-4">
         <h1 className="sr-only">Chat with the agent</h1>
         <div className="flex h-12 shrink-0 items-end gap-2 border-b border-secondary/15 pb-2">
-          <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
-            <Plus /> New conversation
-          </Button>
+          <ConversationMenu current={sid} disabled={running} onNew={reset} onOpen={openConversation}
+                            title={deck.company || events.find((e) => e.type === "user")?.text || "New conversation"} />
           {/* arrows point where the slides would move: left to slide in, right to slide away */}
-          <Button variant="outline" size="icon-sm" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen}
+          <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen}
                   title={panelOpen ? "Slide the presentation away" : `Show the presentation${slideCount ? ` (${slideCount} slides)` : ""}`}
                   aria-label={panelOpen ? "Slide the presentation away" : "Show the presentation"}>
             <ChevronsLeft className={cn("transition-transform duration-300", panelOpen && "rotate-180")} />

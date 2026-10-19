@@ -77,17 +77,19 @@ class Session:
     notes: list[str] = field(default_factory=list)       # for the agent with the next message (e.g. user deletions)
     deck: dict = field(default_factory=lambda: dict(DECK))   # presentation settings, edited in the UI and by the agent
     trash: list[dict] = field(default_factory=list)      # removed items, can be restored
+    updated: float = field(default_factory=time.time)    # last change, for the list of conversations
     events: list[dict] = field(default_factory=list)     # everything the UI shows, in order
 
     def number(self, page_id: str) -> int | None:
         return next((i + 1 for i, p in enumerate(self.pages) if p["page_id"] == page_id), None)
 
     def save(self) -> None:
+        self.updated = time.time()
         SESSIONS.mkdir(parents=True, exist_ok=True)
         data = {"id": self.id, "messages": [m.to_dict() for m in self.messages], "pages": self.pages,
                 "read": sorted(self.read), "items": self.items, "dropped": self.dropped,
                 "rejections": self.rejections, "notes": self.notes, "deck": self.deck, "trash": self.trash,
-                "events": self.events}
+                "updated": self.updated, "events": self.events}
         tmp = SESSIONS / f"{self.id}.json.tmp"
         tmp.write_text(json.dumps(data, ensure_ascii=False, default=str))
         tmp.replace(SESSIONS / f"{self.id}.json")
@@ -98,7 +100,15 @@ class Session:
         return cls(id=d["id"], messages=[ChatMessage.from_dict(m) for m in d["messages"]], pages=d["pages"],
                    read=set(d["read"]), items=d["items"], dropped=d["dropped"], rejections=d.get("rejections", {}),
                    notes=d.get("notes", []), deck={**DECK, **d.get("deck", {})}, trash=d.get("trash", []),
-                   events=d["events"])
+                   updated=d.get("updated", path.stat().st_mtime), events=d["events"])
+
+    def title(self) -> str:
+        """The company if it is set, otherwise the start of the first message."""
+        first = next((e["text"] for e in self.events if e["type"] == "user"), "")
+        return self.deck.get("company") or textwrap.shorten(first, 60, placeholder=" …") or "New conversation"
+
+    def summary(self) -> dict:
+        return {"id": self.id, "title": self.title(), "updated": self.updated, "items": len(self.items)}
 
     def view(self) -> dict:
         return {"id": self.id, "events": self.events, "pages": self.pages, "read": sorted(self.read),

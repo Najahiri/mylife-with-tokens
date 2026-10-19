@@ -144,6 +144,13 @@ export type AgentEvent =
   | { type: "deck"; deck: Deck }
   | { type: "error"; message: string };
 
+export interface SessionSummary {
+  id: string;
+  title: string;
+  updated: number;   // seconds since 1970
+  items: number;
+}
+
 export interface AgentSession {
   id: string;
   events: AgentEvent[];

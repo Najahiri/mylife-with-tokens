@@ -121,6 +121,13 @@ def _llm_error(e: Exception) -> HTTPException:
 
 
 # ---------- agent (chat) ----------
+@app.get("/api/agent")
+def list_sessions():
+    """Saved conversations, most recently changed first (empty ones are left out)."""
+    return {"sessions": sorted((s.summary() for s in sessions.values() if s.events),
+                               key=lambda x: x["updated"], reverse=True)}
+
+
 @app.post("/api/agent")
 def new_session(deck: DeckSettingsIn | None = None):
     s = agent.Session()

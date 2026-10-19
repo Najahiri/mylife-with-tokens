@@ -1,5 +1,5 @@
 import type {
-  AgentEvent, AgentSession, ConfigGroup, Deck, Health, Item, LlmSettings, SearchOptions, Source, TestResult,
+  AgentEvent, AgentSession, ConfigGroup, Deck, SessionSummary, Health, Item, LlmSettings, SearchOptions, Source, TestResult,
 } from "./types";
 
 export class ApiError extends Error {}
@@ -84,6 +84,7 @@ export const api = {
   resetConfig: (section: string) =>
     call<{ groups: ConfigGroup[] }>(`/config/reset?section=${encodeURIComponent(section)}`, { method: "POST" }),
 
+  sessions: () => call<{ sessions: SessionSummary[] }>("/agent"),
   newChat: (deck: Deck) => call<AgentSession>("/agent", { body: deck }),
   saveDeck: (id: string, deck: Deck) => call<{ deck: Deck }>(`/agent/${id}/deck`, { method: "PUT", body: deck }),
   chat: (id: string) => call<AgentSession>(`/agent/${id}`),
