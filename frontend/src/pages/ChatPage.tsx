@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, PanelRightOpen, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
@@ -8,8 +8,10 @@ import { DeckPanel } from "@/components/DeckPanel";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
 import { useElapsed } from "@/lib/useElapsed";
+import { cn } from "@/lib/utils";
 
 const STORE = "raglette-chat";
+const PANEL_STORE = "raglette-panel";   // presentation panel open or folded away (per browser)
 const DECK_STORE = "raglette-deck";   // speaker and organisation carry over to the next conversation
 const NEW_DECK: Deck = { company: "", subtitle: "", kicker: "", author: "", organizer: "", overview: true, contacts_slide: true };
 
@@ -39,6 +41,9 @@ export function ChatPage() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [deck, setDeck] = useState<Deck>(draftDeck);
+  const [panelOpen, setPanelOpen] = useState(() => {
+    try { return localStorage.getItem(PANEL_STORE) !== "closed"; } catch { return true; }
+  });
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
@@ -110,6 +115,11 @@ export function ChatPage() {
     if (sid) saveTimer.current = setTimeout(() => { api.saveDeck(sid, next).catch(setError); }, 400);
   }
 
+  function togglePanel(open: boolean) {
+    setPanelOpen(open);
+    try { localStorage.setItem(PANEL_STORE, open ? "open" : "closed"); } catch { /* not kept */ }
+  }
+
   function reset() {
     remember(null);
     setSid(null);
@@ -119,17 +129,27 @@ export function ChatPage() {
     setError(null);
   }
 
+  // title, overview, one per item, contacts: the same rule as rag_model/presentation.py slide_map
+  const slideCount = items.length
+    ? 1 + (deck.overview ? 1 : 0) + items.length + (deck.contacts_slide && items.some((it) => it.contacts.length) ? 1 : 0)
+    : 0;
   const results = new Map(events.filter((e): e is ToolResult => e.type === "tool_result").map((e) => [e.id, e]));
 
   return (
-    <div className="grid gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:grid-rows-[minmax(0,1fr)]">
+    <div className={cn("grid gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:grid-rows-[minmax(0,1fr)]",
+                       panelOpen && "lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]")}>
       {/* conversation */}
       <section className="flex min-h-[32rem] flex-col gap-4 lg:min-h-0">
         <h1 className="sr-only">Chat with the agent</h1>
-        <div className="flex items-end gap-4">
+        <div className="flex items-end gap-2">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>
+          {!panelOpen && (
+            <Button size="sm" onClick={() => togglePanel(true)}>
+              <PanelRightOpen /> Presentation{slideCount > 0 && ` · ${slideCount} slides`}
+            </Button>
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-secondary/15 pt-4 pr-1">
@@ -181,14 +201,17 @@ export function ChatPage() {
         </form>
       </section>
 
-      <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running} />
+      {panelOpen && (
+        <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running}
+                   onHide={() => togglePanel(false)} />
+      )}
     </div>
   );
 }
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <p className="max-w-[85%] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+    <p className="max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
       {text}
     </p>
   );
@@ -196,7 +219,7 @@ function UserBubble({ text }: { text: string }) {
 
 function AssistantText({ text }: { text: string }) {
   if (!text) return null;
-  return <div className="max-w-[92%] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
+  return <div className="max-w-[min(92%,56rem)] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
 }
 
 /** A collapsed agent step; the details open on click. */
