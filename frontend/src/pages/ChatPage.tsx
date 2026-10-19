@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, GalleryHorizontalEnd, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { useElapsed } from "@/lib/useElapsed";
 
 const STORE = "raglette-chat";
-const PANEL_STORE = "raglette-panel";   // presentation panel open or folded away (per browser)
 const DECK_STORE = "raglette-deck";   // speaker and organisation carry over to the next conversation
 const NEW_DECK: Deck = { company: "", subtitle: "", kicker: "", author: "", organizer: "", overview: true, contacts_slide: true };
 
@@ -41,9 +40,14 @@ export function ChatPage() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [deck, setDeck] = useState<Deck>(draftDeck);
-  const [panelOpen, setPanelOpen] = useState(() => {
-    try { return localStorage.getItem(PANEL_STORE) !== "closed"; } catch { return true; }
-  });
+  // the presentation slides in by itself once the first items arrive; the slides button folds it away or back
+  const [panelOpen, setPanelOpen] = useState(false);
+  const hadItems = useRef(false);
+  function showItems(next: Item[]) {
+    setItems(next);
+    if (next.length && !hadItems.current) setPanelOpen(true);
+    hadItems.current = next.length > 0;
+  }
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
@@ -58,7 +62,7 @@ export function ChatPage() {
     if (restored.current || !sid) return;
     restored.current = true;
     api.chat(sid)
-      .then((s) => { setEvents(s.events); setItems(s.items); setDeck(s.deck); })
+      .then((s) => { setEvents(s.events); showItems(s.items); setDeck(s.deck); })
       .catch(() => { remember(null); setSid(null); });
   }, [sid]);
 
@@ -80,7 +84,7 @@ export function ChatPage() {
         setSid(id);
       }
       await api.sendMessage(id, text, (e) => {
-        if (e.type === "items") setItems(e.items);
+        if (e.type === "items") showItems(e.items);
         else if (e.type === "deck") setDeck(e.deck);
         else setEvents((prev) => [...prev, e]);
         if (e.type === "error") setError(new Error(e.message));
@@ -97,7 +101,7 @@ export function ChatPage() {
     setError(null);
     try {
       const s = await api.removeItems(sid, [title]);
-      setItems(s.items);
+      showItems(s.items);
       setEvents(s.events);
     } catch (e) {
       setError(e);
@@ -115,16 +119,12 @@ export function ChatPage() {
     if (sid) saveTimer.current = setTimeout(() => { api.saveDeck(sid, next).catch(setError); }, 400);
   }
 
-  function togglePanel(open: boolean) {
-    setPanelOpen(open);
-    try { localStorage.setItem(PANEL_STORE, open ? "open" : "closed"); } catch { /* not kept */ }
-  }
-
   function reset() {
     remember(null);
     setSid(null);
     setEvents([]);
-    setItems([]);
+    showItems([]);
+    setPanelOpen(false);
     setDeck(draftDeck());
     setError(null);
   }
@@ -143,6 +143,11 @@ export function ChatPage() {
         <div className="flex items-end gap-2">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
+          </Button>
+          <Button variant={panelOpen ? "default" : "outline"} size="sm" onClick={() => setPanelOpen(!panelOpen)}
+                  aria-pressed={panelOpen} title={panelOpen ? "Fold the slides away" : "Show the slides"}
+                  aria-label={panelOpen ? "Fold the slides away" : `Show the slides (${slideCount})`}>
+            <GalleryHorizontalEnd />{slideCount > 0 && <span className="tabular-nums">{slideCount}</span>}
           </Button>
         </div>
 
@@ -174,7 +179,7 @@ export function ChatPage() {
             return null;
           })}
           {running && (
-            <p className="flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
+            <p className="animate-fade flex items-center gap-2 text-sm text-muted-foreground tabular-nums">
               <Loader2 className="size-4 animate-spin" /> Apertus is working … {elapsed}
             </p>
           )}
@@ -182,30 +187,45 @@ export function ChatPage() {
         </div>
 
         <ErrorNote error={error} />
-        <form className="flex items-end gap-2 rounded-3xl border border-secondary/15 bg-cream py-2.5 pr-2.5 pl-5 focus-within:border-secondary/40"
-              onSubmit={(e) => { e.preventDefault(); send(); }}>
-          <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                    placeholder={events.length ? "Ask for changes …" : "Buzzwords, e.g. wearables, precision diabetes care, AI-first, scale-up"}
-                    aria-label="Message to the agent"
-                    className="min-w-0 flex-1 resize-none bg-transparent px-1 py-1 text-sm outline-none" />
-          <Button type="submit" size="sm" disabled={running || !draft.trim()}>
-            {running ? <Loader2 className="animate-spin" /> : <Send />} Send
-          </Button>
-        </form>
+        <Composer value={draft} onChange={setDraft} onSend={send} running={running}
+                  placeholder={events.length ? "Ask for changes …" : "Buzzwords, e.g. wearables, precision diabetes care, AI-first, scale-up"} />
       </section>
 
-      <SideDrawer open={panelOpen} onToggle={() => togglePanel(!panelOpen)}
-                  label={slideCount ? `Presentation · ${slideCount} slides` : "Presentation"}>
+      <SideDrawer open={panelOpen}>
         <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running} />
       </SideDrawer>
     </div>
   );
 }
 
+/** One line by default, grows with the text up to a few lines; Enter sends, Shift+Enter makes a new line. */
+function Composer({ value, onChange, onSend, running, placeholder }: {
+  value: string; onChange: (v: string) => void; onSend: () => void; running: boolean; placeholder: string;
+}) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [value]);
+  return (
+    <form className="flex items-end gap-2 rounded-[1.6rem] border border-secondary/15 bg-cream p-1.5 pl-5 transition-colors duration-200 focus-within:border-secondary/40"
+          onSubmit={(e) => { e.preventDefault(); onSend(); }}>
+      <textarea ref={field} value={value} onChange={(e) => onChange(e.target.value)} rows={1}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); } }}
+                placeholder={placeholder} aria-label="Message to the agent"
+                className="max-h-[200px] min-w-0 flex-1 resize-none self-center bg-transparent py-2 text-sm leading-6 outline-none" />
+      <Button type="submit" size="icon" disabled={running || !value.trim()} aria-label="Send" title="Send (Enter)">
+        {running ? <Loader2 className="animate-spin" /> : <Send />}
+      </Button>
+    </form>
+  );
+}
+
 function UserBubble({ text }: { text: string }) {
   return (
-    <p className="max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+    <p className="animate-in-up max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
       {text}
     </p>
   );
@@ -213,7 +233,7 @@ function UserBubble({ text }: { text: string }) {
 
 function AssistantText({ text }: { text: string }) {
   if (!text) return null;
-  return <div className="max-w-[min(92%,56rem)] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
+  return <div className="animate-in-up max-w-[min(92%,56rem)] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
 }
 
 /** A collapsed agent step; the details open on click. */
@@ -227,11 +247,11 @@ function StepRow({ icon, label, meta, details, pending }: {
       {meta && <span className="text-muted-foreground">{meta}</span>}
     </span>
   );
-  if (!details) return <div className="py-0.5">{head}</div>;
+  if (!details) return <div className="animate-in-up py-0.5">{head}</div>;
   return (
-    <details className="group py-0.5">
+    <details className="group animate-in-up py-0.5">
       <summary className="flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden">
-        <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+        <ChevronRight className="size-3.5 text-muted-foreground transition-transform duration-200 group-open:rotate-90" />
         {head}
       </summary>
       <div className="mt-2 ml-5 border-l border-secondary/20 pl-3 text-xs leading-relaxed text-muted-foreground">{details}</div>

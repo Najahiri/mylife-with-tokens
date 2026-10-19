@@ -39,7 +39,7 @@ export function ExportMenu({ disabled, pending, onExport }: {
       </Button>
       {open && (
         <div role="menu"
-             className="absolute top-full right-0 z-20 mt-2 flex w-64 flex-col rounded-2xl border border-secondary/15 bg-background p-1.5 shadow-lg">
+             className="animate-zoom absolute top-full right-0 z-20 mt-2 flex w-64 origin-top-right flex-col rounded-2xl border border-secondary/15 bg-background p-1.5 shadow-lg">
           {OPTIONS.map((o) => (
             <button key={o.format} type="button" role="menuitem"
                     onClick={() => { setOpen(false); onExport(o.format); }}

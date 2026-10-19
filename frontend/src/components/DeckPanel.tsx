@@ -1,24 +1,40 @@
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, Trash2 } from "lucide-react";
-import { api, type DeckFields } from "@/api/client";
+import type { ReactNode } from "react";
+import { Eye, EyeOff, Loader2, Pencil, Trash2 } from "lucide-react";
+import { api } from "@/api/client";
 import type { Deck, Item } from "@/api/types";
 import { ExportMenu, type ExportFormat } from "@/components/ExportMenu";
 import { ItemCard } from "@/components/ItemCard";
 import { SlideViewer } from "@/components/SlideViewer";
 import { ErrorNote } from "@/components/Step";
-import { Checkbox } from "@/components/ui/checkbox";
+import { TitleSlideEditor } from "@/components/TitleSlideEditor";
 import { useDebounced } from "@/lib/useDebounced";
 import { cn } from "@/lib/utils";
 
-type TextField = Exclude<keyof DeckFields, "overview" | "contacts_slide">;
-const FIELDS: { key: TextField; label: string; placeholder?: string; wide?: boolean }[] = [
-  { key: "company", label: "Company", placeholder: "Company name", wide: true },
-  { key: "subtitle", label: "Subtitle", wide: true },
-  { key: "kicker", label: "Label above the title" },
-  { key: "author", label: "Speaker", placeholder: "Name" },
-  { key: "organizer", label: "Organisation", placeholder: "Unit, shown below the speaker" },
-];
+/** A small button on a slide preview: hidden until the slide is hovered, unless `visible`. */
+function SlideAction({ onClick, disabled, title, visible, primary, children }: {
+  onClick: () => void; disabled?: boolean; title: string; visible?: boolean; primary?: boolean; children: ReactNode;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} title={title} aria-label={title}
+            className={cn("flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-white transition-all duration-200",
+                          primary ? "bg-primary hover:brightness-110" : "bg-black/70 hover:bg-primary disabled:hover:bg-black/70",
+                          visible ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100")}>
+      {children}
+    </button>
+  );
+}
+
+/** Where a hidden extra slide would be: a thin line to bring it back. */
+function HiddenSlide({ label, onShow }: { label: string; onShow: () => void }) {
+  return (
+    <button type="button" onClick={onShow}
+            className="animate-fade flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-secondary/25 py-2 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary">
+      <Eye className="size-3.5" /> {label} hidden · show
+    </button>
+  );
+}
 
 /** The presentation built from the checked items: live slide preview, big view, PDF, and the evidence behind it.
  *  Every item has its own slide; deleting the slide takes the item out of the presentation. */
@@ -31,6 +47,7 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
 }) {
   const [tab, setTab] = useState<"slides" | "evidence">("slides");
   const [viewing, setViewing] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const defaults = useQuery({ queryKey: ["deck-defaults"], queryFn: api.deckDefaults });
   // re-render the slides when the items or the fields change, once typing has paused
@@ -66,27 +83,10 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
       </div>
       <ErrorNote error={preview.error || exporting.error} />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      {/* key: the tab's content fades in when switching */}
+      <div key={tab} className="animate-fade flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
         {tab === "slides" && (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-              {FIELDS.map((f) => (
-                <label key={f.key} className={cn("flex flex-col gap-1", f.wide ? "col-span-2 sm:col-span-3" : "sm:col-span-2")}>
-                  <span className="text-xs font-medium">{f.label}</span>
-                  <input value={fields[f.key]} placeholder={f.placeholder ?? defaults.data?.[f.key as "subtitle" | "kicker"]}
-                         onChange={(e) => onDeck({ [f.key]: e.target.value })}
-                         className="min-w-0 border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-secondary" />
-                </label>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              {([["overview", "Overview slide (at a glance)"], ["contacts_slide", "Contacts slide"]] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2">
-                  <Checkbox checked={fields[key]} onCheckedChange={(v) => onDeck({ [key]: v === true })} />
-                  {label}
-                </label>
-              ))}
-            </div>
             {!items.length && (
               <p className="text-sm text-muted-foreground">
                 Slides appear here as the agent adds checked items: a title slide, an overview, one slide per item and
@@ -94,23 +94,50 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
               </p>
             )}
             {items.length > 0 && (
-              <div className={cn("flex flex-col gap-3 transition-opacity", preview.isFetching && "opacity-60")}>
-                {slides.map((src, i) => (
-                  <div key={i} className="group relative">
-                    <button type="button" onClick={() => setViewing(i)} aria-label={`Show slide ${i + 1} large`}
-                            className="block w-full cursor-zoom-in">
-                      <img src={src} alt={`Slide ${i + 1}`} className="w-full border border-secondary/15 shadow-sm" />
-                    </button>
-                    {itemOf(i) && (
-                      <button type="button" onClick={() => onRemove(itemOf(i)!)} disabled={locked}
-                              title={locked ? "Wait until the agent has answered" : "Delete this slide"}
-                              aria-label={`Delete slide ${i + 1}: ${itemOf(i)}`}
-                              className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-primary disabled:hover:bg-black/70">
-                        <Trash2 className="size-3.5" /> Delete
-                      </button>
-                    )}
-                  </div>
-                ))}
+              <div className={cn("flex flex-col gap-3 transition-opacity duration-300", preview.isFetching && "opacity-60")}>
+                {slides.map((src, i) => {
+                  const info = map[i];
+                  return (
+                    // keyed by what the slide shows: a new item's slide fades in, the others stay in place
+                    <div key={info?.kind === "item" ? `item:${info.title}` : (info?.kind ?? i)} className="animate-in-up flex flex-col gap-3">
+                      <div className="group relative">
+                        <button type="button" onClick={() => setViewing(i)} aria-label={`Show slide ${i + 1} large`}
+                                className="block w-full cursor-zoom-in">
+                          <img src={src} alt={`Slide ${i + 1}`} className="w-full border border-secondary/15 shadow-sm transition-shadow duration-200 group-hover:shadow-md" />
+                        </button>
+                        <div className="absolute top-2 right-2 flex gap-1.5">
+                          {info?.kind === "title" && (
+                            <SlideAction onClick={() => setEditing(!editing)} visible={!fields.company || editing} primary={!fields.company}
+                                         title={fields.company ? "Edit the title slide" : "Add the company name"}>
+                              <Pencil className="size-3.5" /> {fields.company ? "Edit" : "Add company name"}
+                            </SlideAction>
+                          )}
+                          {info?.kind === "item" && (
+                            <SlideAction onClick={() => onRemove(info.title)} disabled={locked}
+                                         title={locked ? "Wait until the agent has answered" : `Delete this slide: ${info.title}`}>
+                              <Trash2 className="size-3.5" /> Delete
+                            </SlideAction>
+                          )}
+                          {(info?.kind === "overview" || info?.kind === "contacts") && (
+                            <SlideAction onClick={() => onDeck(info.kind === "overview" ? { overview: false } : { contacts_slide: false })}
+                                         title="Hide this slide">
+                              <EyeOff className="size-3.5" /> Hide
+                            </SlideAction>
+                          )}
+                        </div>
+                      </div>
+                      {info?.kind === "title" && editing && (
+                        <TitleSlideEditor deck={fields} defaults={defaults.data} onDeck={onDeck} onDone={() => setEditing(false)} />
+                      )}
+                      {info?.kind === "title" && !fields.overview && (
+                        <HiddenSlide label="Overview slide" onShow={() => onDeck({ overview: true })} />
+                      )}
+                    </div>
+                  );
+                })}
+                {preview.data && !fields.contacts_slide && items.some((it) => it.contacts.length > 0) && (
+                  <HiddenSlide label="Contacts slide" onShow={() => onDeck({ contacts_slide: true })} />
+                )}
                 {!preview.data && <Loader2 className="size-5 animate-spin text-muted-foreground" />}
               </div>
             )}
@@ -119,7 +146,9 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
         {tab === "evidence" && (
           <>
             {!items.length && <p className="text-sm text-muted-foreground">Checked items with their quotes and sources.</p>}
-            {items.map((it) => <ItemCard key={it.title} item={it} hitOf={() => undefined} />)}
+            {items.map((it) => (
+              <div key={it.title} className="animate-in-up"><ItemCard item={it} hitOf={() => undefined} /></div>
+            ))}
           </>
         )}
       </div>
