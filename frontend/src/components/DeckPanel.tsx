@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
-import { Loader2, PanelRightClose, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { api, type DeckFields } from "@/api/client";
 import type { Deck, Item } from "@/api/types";
 import { ExportMenu, type ExportFormat } from "@/components/ExportMenu";
 import { ItemCard } from "@/components/ItemCard";
-import { Button } from "@/components/ui/button";
 import { SlideViewer } from "@/components/SlideViewer";
 import { ErrorNote } from "@/components/Step";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,13 +22,12 @@ const FIELDS: { key: TextField; label: string; placeholder?: string; wide?: bool
 
 /** The presentation built from the checked items: live slide preview, big view, PDF, and the evidence behind it.
  *  Every item has its own slide; deleting the slide takes the item out of the presentation. */
-export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked, onHide }: {
+export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
   items: Item[];
   deck: Deck;                              // presentation settings, shared with the agent
   onDeck: (change: Partial<Deck>) => void;
   onRemove: (title: string) => void;
   locked: boolean;          // the agent is working: the list must not change under it
-  onHide: () => void;       // fold the panel away, the chat takes the full width
 }) {
   const [tab, setTab] = useState<"slides" | "evidence">("slides");
   const [viewing, setViewing] = useState<number | null>(null);
@@ -50,12 +48,9 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked, onHid
     tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-primary");
 
   return (
-    <aside className="flex flex-col gap-4 lg:min-h-0">
+    <aside className="flex h-full flex-col gap-4 lg:min-h-0">
       <h2 className="sr-only">Presentation</h2>
       <div className="flex items-end gap-4">
-        <Button variant="outline" size="sm" onClick={onHide} title="Fold the presentation away, the chat takes the full width">
-          <PanelRightClose /> Hide
-        </Button>
         <div className="ml-auto">
           <ExportMenu disabled={!items.length} pending={exporting.isPending} onExport={(f) => exporting.mutate(f)} />
         </div>

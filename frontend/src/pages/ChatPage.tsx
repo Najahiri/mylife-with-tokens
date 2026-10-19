@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, PanelRightOpen, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
 import { DeckPanel } from "@/components/DeckPanel";
+import { SideDrawer } from "@/components/SideDrawer";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
 import { useElapsed } from "@/lib/useElapsed";
-import { cn } from "@/lib/utils";
 
 const STORE = "raglette-chat";
 const PANEL_STORE = "raglette-panel";   // presentation panel open or folded away (per browser)
@@ -136,20 +136,14 @@ export function ChatPage() {
   const results = new Map(events.filter((e): e is ToolResult => e.type === "tool_result").map((e) => [e.id, e]));
 
   return (
-    <div className={cn("grid gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:grid-rows-[minmax(0,1fr)]",
-                       panelOpen && "lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]")}>
+    <div className="flex flex-col gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:flex-row lg:gap-0">
       {/* conversation */}
-      <section className="flex min-h-[32rem] flex-col gap-4 lg:min-h-0">
+      <section className="flex min-h-[32rem] min-w-0 flex-1 flex-col gap-4 lg:min-h-0 lg:pr-4">
         <h1 className="sr-only">Chat with the agent</h1>
         <div className="flex items-end gap-2">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>
-          {!panelOpen && (
-            <Button size="sm" onClick={() => togglePanel(true)}>
-              <PanelRightOpen /> Presentation{slideCount > 0 && ` · ${slideCount} slides`}
-            </Button>
-          )}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto border-t border-secondary/15 pt-4 pr-1">
@@ -201,10 +195,10 @@ export function ChatPage() {
         </form>
       </section>
 
-      {panelOpen && (
-        <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running}
-                   onHide={() => togglePanel(false)} />
-      )}
+      <SideDrawer open={panelOpen} onToggle={() => togglePanel(!panelOpen)}
+                  label={slideCount ? `Presentation · ${slideCount} slides` : "Presentation"}>
+        <DeckPanel items={items} deck={deck} onDeck={changeDeck} onRemove={removeItem} locked={running} />
+      </SideDrawer>
     </div>
   );
 }
