@@ -20,8 +20,9 @@ the tool's schema). At most `NUDGES` times per message.
 An identical repeated tool call is not run again.
 
 Apertus sometimes writes its reasoning into the text, ended by <|inner_suffix|>, or a tool call in its raw
-format (<|tools_prefix|>[...]<|tools_suffix|>) that the server's parser missed: `_clean` separates the reasoning
-and turns raw tool calls into real ones.
+format (<|tools_prefix|>[...]<|tools_suffix|>) that the server's parser missed; the smaller models also write a
+call as plain text, `remove_items(titles: ["…"])`. `_clean` separates the reasoning and turns such calls into real
+ones.
 
 Items the user deletes in the UI are taken off the list and the agent is told with the next message.
 
@@ -420,6 +421,23 @@ def load_sessions() -> dict[str, Session]:
 REASONING_END = "<|inner_suffix|>"
 RAW_TOOLS = re.compile(r"<\|tools_prefix\|>(.*?)<\|tools_suffix\|>", re.S)
 MARKER = re.compile(r"<\|[a-z_]+\|>")
+TOOL_NAMES = ("search", "read_pages", "add_items", "remove_items", "restore_items", "edit_item", "update_presentation")
+TEXT_CALL = re.compile(r"\s*(" + "|".join(TOOL_NAMES) + r")\s*\((.*)\)\s*", re.S)
+TEXT_ARG = re.compile(r"\s*,?\s*(\w+)\s*[:=]\s*")
+
+
+def _text_call(text: str) -> tuple[str, dict] | None:
+    """A whole answer that is one tool call written as text, `name(key: value, …)` with JSON values."""
+    m = TEXT_CALL.fullmatch(text)
+    if not m:
+        return None
+    body, args, i = m.group(2), {}, 0
+    while k := TEXT_ARG.match(body, i):
+        try:
+            args[k.group(1)], i = json.JSONDecoder().raw_decode(body, k.end())
+        except json.JSONDecodeError:
+            return None
+    return (m.group(1), args) if args and not body[i:].strip() else None
 
 
 def _clean(reply: ChatMessage) -> tuple[ChatMessage, str]:
@@ -445,6 +463,9 @@ def _clean(reply: ChatMessage) -> tuple[ChatMessage, str]:
                 args = json.loads(args)
             calls.append(ToolCall(tool_name=name, arguments=args, id=f"raw-{uuid.uuid4().hex[:8]}"))
     text = MARKER.sub("", RAW_TOOLS.sub("", text)).strip()
+    if not calls and (call := _text_call(text)):
+        calls.append(ToolCall(tool_name=call[0], arguments=call[1], id=f"raw-{uuid.uuid4().hex[:8]}"))
+        text = ""
     reasoning = MARKER.sub("", reasoning).strip()
     if text == (reply.text or "") and calls == list(reply.tool_calls):
         return reply, ""
