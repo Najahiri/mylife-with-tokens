@@ -7,6 +7,7 @@ dataset_data_files:
   dev: v7/decision-v7/development.jsonl
   test: v7/decision-v7/test.jsonl
 hub_model_id: HX-Tfd/Apertus-1.5-8B-Decision  # Required: HF user/repo_id to push weights.
+hub_upload_epoch: 1  # Upload immediately after this training epoch; 0 disables early upload.
 output_dir: ./jevpertus_checkpoints
 
 # CUDA index on the machine running this script (after CUDA_VISIBLE_DEVICES).
