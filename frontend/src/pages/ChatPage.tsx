@@ -125,11 +125,9 @@ export function ChatPage() {
     <div className="grid gap-8 pt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
       {/* conversation */}
       <section className="flex min-h-[32rem] flex-col gap-4 lg:h-[calc(100vh-9rem)]">
-        <div className="flex items-end gap-4">
-          <div className="flex flex-col gap-1.5">
-            <span className="eyebrow text-primary">Agent</span>
-            <h1 className="text-4xl leading-none font-bold">Chat</h1>
-          </div>
+        <h1 className="sr-only">Chat with the agent</h1>
+        {/* as tall as the "Presentation" heading next to it, so both columns start on one line */}
+        <div className="flex min-h-[3.75rem] items-end gap-4">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>
@@ -171,7 +169,7 @@ export function ChatPage() {
         </div>
 
         <ErrorNote error={error} />
-        <form className="flex items-end gap-2 border-l-4 border-primary bg-cream p-3"
+        <form className="flex items-end gap-2 rounded-3xl border border-secondary/15 bg-cream py-2.5 pr-2.5 pl-5 focus-within:border-secondary/40"
               onSubmit={(e) => { e.preventDefault(); send(); }}>
           <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
@@ -190,12 +188,16 @@ export function ChatPage() {
 }
 
 function UserBubble({ text }: { text: string }) {
-  return <p className="max-w-[85%] self-end bg-primary px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">{text}</p>;
+  return (
+    <p className="max-w-[85%] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+      {text}
+    </p>
+  );
 }
 
 function AssistantText({ text }: { text: string }) {
   if (!text) return null;
-  return <div className="max-w-[92%] border-l-4 border-primary bg-cream px-4 py-3"><Rich text={text} /></div>;
+  return <div className="max-w-[92%] rounded-3xl rounded-tl-lg bg-cream px-5 py-3.5"><Rich text={text} /></div>;
 }
 
 /** A collapsed agent step; the details open on click. */
