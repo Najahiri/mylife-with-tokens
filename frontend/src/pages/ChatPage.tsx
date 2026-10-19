@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ChevronRight, GalleryHorizontalEnd, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
+  BookOpen, ChevronRight, ChevronsLeft, ListPlus, ListX, Loader2, Pencil, Plus, Presentation, Repeat, Search, Send, Sparkles, Trash2, Undo2,
 } from "lucide-react";
 import { api } from "@/api/client";
 import type { AgentEvent, Deck, Item } from "@/api/types";
@@ -9,6 +9,7 @@ import { SideDrawer } from "@/components/SideDrawer";
 import { ErrorNote } from "@/components/Step";
 import { Button } from "@/components/ui/button";
 import { useElapsed } from "@/lib/useElapsed";
+import { cn } from "@/lib/utils";
 
 const STORE = "raglette-chat";
 const DECK_STORE = "raglette-deck";   // speaker and organisation carry over to the next conversation
@@ -144,10 +145,11 @@ export function ChatPage() {
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>
-          <Button variant={panelOpen ? "default" : "outline"} size="sm" onClick={() => setPanelOpen(!panelOpen)}
-                  aria-pressed={panelOpen} title={panelOpen ? "Fold the slides away" : "Show the slides"}
-                  aria-label={panelOpen ? "Fold the slides away" : `Show the slides (${slideCount})`}>
-            <GalleryHorizontalEnd />{slideCount > 0 && <span className="tabular-nums">{slideCount}</span>}
+          {/* arrows point where the slides would move: left to slide in, right to slide away */}
+          <Button variant="outline" size="icon-sm" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen}
+                  title={panelOpen ? "Slide the presentation away" : `Show the presentation${slideCount ? ` (${slideCount} slides)` : ""}`}
+                  aria-label={panelOpen ? "Slide the presentation away" : "Show the presentation"}>
+            <ChevronsLeft className={cn("transition-transform duration-300", panelOpen && "rotate-180")} />
           </Button>
         </div>
 
