@@ -1,0 +1,132 @@
+name: bern_resource_benchmark_50
+execution:
+  enabled: false
+  review_status: approved_by_user
+  concurrency: 20
+  repetitions: 1
+  seed: 42
+  shuffle_run_order: true
+  scenario_timeout_seconds: 60
+  timeout_enforcement: terminate_isolated_worker
+  worker_queue_time: recorded_separately_outside_task_deadline
+  resume_completed_runs: true
+  record_failures_and_timeouts: true
+dataset:
+  source: production_corpus
+  source_sqlite: data/index.sqlite
+  frozen_sqlite: eval/data/corpus.sqlite
+  requested_tasks: 50
+  tasks_path: eval/data/tasks.jsonl
+  contents: questions_and_source_metadata_only
+  question_scope: explicit_reference_page_metadata
+  generate_reference_answers: false
+  validate_reference_answers: false
+  use_existing_question_candidates: true
+  task_type_targets:
+    fact_lookup: 10
+    technical_detail: 10
+    relationship_or_affiliation: 8
+    process_or_capability: 8
+    multi_keypoint: 7
+    unanswerable: 7
+  preparation:
+    enabled: false
+    concurrency: 20
+pipeline:
+  domain_mode: unchanged_bern_pipeline
+  corpus: full_frozen_production_corpus
+  production_index_access: read_only_snapshot
+  production_settings_write: false
+  fresh_session_per_task_and_configuration: true
+  temperature: 0
+  max_agent_steps: 15
+  max_output_tokens_per_call: 6000
+  llm_timeout_seconds: 60
+  transport_retries: 0
+  output_repair_attempts: 2
+  stream: true
+  request_streaming_usage: true
+  embedding_model: BAAI/bge-m3
+  preserve_pipeline_fact_checking: true
+models:
+  generation_8b: apertus-v1-5-8b
+  generation_70b: apertus-v1-5-70b
+  chat_base_url: https://gateway.keera.ch/api/v1
+  decision_endpoint: from_existing_backend_settings_or_environment
+  decision_model: HX-Tfd/Apertus-1.5-8B-Decision
+  record_returned_model_revisions: true
+  store_credentials_in_artifacts: false
+configurations:
+- id: none_8b
+  decision_model: null
+  generation_policy: fixed
+  generation_model: apertus-v1-5-8b
+- id: none_70b
+  decision_model: null
+  generation_policy: fixed
+  generation_model: apertus-v1-5-70b
+- id: llm_router_8b
+  decision_model: apertus-v1-5-8b
+  generation_policy: adaptive_8b_70b
+  generation_model: null
+- id: llm_router_70b
+  decision_model: apertus-v1-5-70b
+  generation_policy: adaptive_8b_70b
+  generation_model: null
+- id: finetuned_router
+  decision_model: HX-Tfd/Apertus-1.5-8B-Decision
+  generation_policy: adaptive_8b_70b
+  generation_model: null
+measurement:
+  metrics:
+  - elapsed_seconds
+  - input_tokens
+  - output_tokens
+  - total_tokens
+  - model_calls
+  per_model: true
+  combined_across_models: true
+  per_configuration: true
+  call_categories:
+  - generation
+  - llm_routing
+  - finetuned_routing
+  include_repair_and_failed_calls: true
+  include_cold_start_provider_queueing_and_retries_in_wall_time: true
+  persist_partial_telemetry_before_deadline: true
+  token_provenance:
+  - provider_reported
+  - missing
+  treat_missing_token_usage_as_zero: false
+  report_known_tokens_and_missing_usage_call_count: true
+  finetuned_router_generated_tokens: 0
+  separate_pipeline_and_preparation_resource_totals: true
+  distinguish_wall_time_from_sum_of_model_call_durations: true
+scoring:
+  enabled: false
+  reference_answers: false
+  accuracy: false
+  precision: false
+  retrieval_metrics: false
+  llm_judge: false
+report:
+  output_root: eval/runs
+  formats:
+  - jsonl
+  - csv
+  - markdown
+  group_by:
+  - configuration_id
+  - actual_model
+  raw_run_dimensions:
+  - task_type
+  per_call_group_by:
+  - actual_model
+  - purpose
+  outputs:
+  - frozen_settings.yaml
+  - tasks.jsonl
+  - runs.jsonl
+  - calls.jsonl
+  - summary.csv
+  - report.md
