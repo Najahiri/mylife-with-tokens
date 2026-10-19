@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronDown, Loader2, MessagesSquare, Plus } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, ChevronDown, Loader2, MessagesSquare, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { useDismiss } from "@/lib/useDismiss";
 import { cn } from "@/lib/utils";
@@ -16,17 +16,24 @@ function relative(seconds: number) {
 }
 
 /** The current conversation's name; opens a menu to start a new one or go back to an earlier one. */
-export function ConversationMenu({ current, title, disabled, onNew, onOpen }: {
+export function ConversationMenu({ current, title, disabled, onNew, onOpen, onDeleted }: {
   current: string | null;
   title: string;
   disabled: boolean;        // the agent is working: no switching
   onNew: () => void;
   onOpen: (id: string) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);   // deleting is for good: a second click confirms
   const box = useRef<HTMLDivElement>(null);
-  useDismiss(open, box, useCallback(() => setOpen(false), []));
+  useDismiss(open, box, useCallback(() => { setOpen(false); setConfirming(null); }, []));
+  const qc = useQueryClient();
   const list = useQuery({ queryKey: ["sessions"], queryFn: api.sessions, enabled: open });
+  const remove = useMutation({
+    mutationFn: api.deleteChat,
+    onSuccess: (_, id) => { setConfirming(null); qc.invalidateQueries({ queryKey: ["sessions"] }); onDeleted(id); },
+  });
   const pick = (fn: () => void) => { setOpen(false); fn(); };
 
   return (
@@ -48,17 +55,31 @@ export function ConversationMenu({ current, title, disabled, onNew, onOpen }: {
           <span className="eyebrow mt-1 px-3 pt-2 pb-1 text-muted-foreground">Recent</span>
           {list.isLoading && <Loader2 className="mx-3 my-2 size-4 animate-spin text-muted-foreground" />}
           {list.data?.sessions.map((s) => (
-            <button key={s.id} type="button" role="menuitem" onClick={() => pick(() => onOpen(s.id))}
-                    className="flex items-start gap-2 rounded-xl px-3 py-2 text-left hover:bg-accent focus-visible:bg-accent focus-visible:outline-none">
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className={cn("truncate text-sm", s.id === current ? "font-semibold text-secondary" : "text-foreground")}>{s.title}</span>
-                <span className="text-xs text-muted-foreground">
-                  {s.items} {s.items === 1 ? "item" : "items"} · {relative(s.updated)}
+            <div key={s.id} className="group flex items-center gap-1 rounded-xl transition-colors hover:bg-accent">
+              <button type="button" role="menuitem" onClick={() => pick(() => onOpen(s.id))}
+                      className="flex min-w-0 flex-1 items-start gap-2 rounded-xl px-3 py-2 text-left focus-visible:bg-accent focus-visible:outline-none">
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className={cn("truncate text-sm", s.id === current ? "font-semibold text-secondary" : "text-foreground")}>{s.title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {s.items} {s.items === 1 ? "item" : "items"} · {relative(s.updated)}
+                  </span>
                 </span>
-              </span>
-              {s.id === current && <Check className="mt-0.5 size-4 shrink-0 text-secondary" />}
-            </button>
+                {s.id === current && <Check className="mt-0.5 size-4 shrink-0 text-secondary" />}
+              </button>
+              {confirming === s.id ? (
+                <button type="button" onClick={() => remove.mutate(s.id)} disabled={remove.isPending}
+                        className="animate-zoom mr-1.5 flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:brightness-110">
+                  {remove.isPending ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />} Delete?
+                </button>
+              ) : (
+                <button type="button" onClick={() => setConfirming(s.id)} title="Delete this conversation" aria-label={`Delete conversation: ${s.title}`}
+                        className="mr-1.5 shrink-0 rounded-full p-1.5 text-muted-foreground opacity-0 transition-all group-hover:opacity-100 hover:bg-background hover:text-primary focus-visible:opacity-100">
+                  <Trash2 className="size-3.5" />
+                </button>
+              )}
+            </div>
           ))}
+          {remove.error && <span className="px-3 py-1 text-xs text-primary">{remove.error.message}</span>}
           {list.data && !list.data.sessions.length && (
             <span className="px-3 py-2 text-sm text-muted-foreground">No earlier conversations yet.</span>
           )}

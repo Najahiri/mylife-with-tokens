@@ -85,6 +85,7 @@ export const api = {
     call<{ groups: ConfigGroup[] }>(`/config/reset?section=${encodeURIComponent(section)}`, { method: "POST" }),
 
   sessions: () => call<{ sessions: SessionSummary[] }>("/agent"),
+  deleteChat: (id: string) => call<{ deleted: string }>(`/agent/${id}`, { method: "DELETE" }),
   newChat: (deck: Deck) => call<AgentSession>("/agent", { body: deck }),
   saveDeck: (id: string, deck: Deck) => call<{ deck: Deck }>(`/agent/${id}/deck`, { method: "PUT", body: deck }),
   chat: (id: string) => call<AgentSession>(`/agent/${id}`),

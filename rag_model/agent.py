@@ -83,6 +83,9 @@ class Session:
     def number(self, page_id: str) -> int | None:
         return next((i + 1 for i, p in enumerate(self.pages) if p["page_id"] == page_id), None)
 
+    def delete(self) -> None:
+        (SESSIONS / f"{self.id}.json").unlink(missing_ok=True)
+
     def save(self) -> None:
         self.updated = time.time()
         SESSIONS.mkdir(parents=True, exist_ok=True)

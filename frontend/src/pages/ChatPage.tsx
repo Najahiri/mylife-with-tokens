@@ -163,6 +163,7 @@ export function ChatPage() {
         <h1 className="sr-only">Chat with the agent</h1>
         <div className="flex h-12 shrink-0 items-end gap-2 border-b border-secondary/15 pb-2">
           <ConversationMenu current={sid} disabled={running} onNew={reset} onOpen={openConversation}
+                            onDeleted={(id) => { if (id === sid) reset(); }}
                             title={deck.company || events.find((e) => e.type === "user")?.text || "New conversation"} />
           {/* arrows point where the slides would move: left to slide in, right to slide away */}
           <Button variant="outline" size="icon-sm" className="ml-auto shrink-0" onClick={() => setPanelOpen(!panelOpen)} aria-expanded={panelOpen}

@@ -144,6 +144,18 @@ def get_session(sid: str):
     return sessions[sid].view()
 
 
+@app.delete("/api/agent/{sid}")
+def delete_session(sid: str):
+    """Delete a conversation for good (its saved file; traces stay)."""
+    if sid not in sessions:
+        raise HTTPException(404, "conversation not found")
+    if busy[sid].locked():
+        raise HTTPException(409, "the agent is still working on this conversation")
+    sessions.pop(sid).delete()
+    busy.pop(sid, None)
+    return {"deleted": sid}
+
+
 @app.put("/api/agent/{sid}/deck")
 def update_deck(sid: str, body: DeckSettingsIn):
     """Presentation settings changed in the UI (the agent changes the same settings with update_presentation)."""
