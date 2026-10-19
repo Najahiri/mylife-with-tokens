@@ -1,0 +1,52 @@
+# Allgemeine Parameter der Pipeline. Keine Regeln pro Website.
+
+prepare:
+  min_words: 20              # A2.3: Seiten mit weniger Wörtern fallen weg
+  short_page_chars: 1300     # A3.1: kürzere Seiten bleiben ein Stück (~200 Wörter)
+  chunk_words: 160           # A3.1: Zielgrösse der Stücke (mit Überlappung ~100–200 Wörter)
+  overlap_words: 30          # A3.1: Überlappung (~1–2 Sätze)
+  boilerplate:               # A2.2: Zeilen, die auf vielen Seiten einer Website stehen
+    max_words: 12            #   nur kurze Zeilen gelten als Menü/Footer
+    min_pages: 3             #   mindestens auf so vielen Seiten
+    share: 0.2               #   oder auf diesem Anteil der Seiten einer Website
+    cap: 50                  #   höchstens so viele Seiten als Schwelle (grosse Websites)
+
+embedding:                   # A4.1 und B3.1, muss für beide gleich sein
+  model: BAAI/bge-m3
+  dim: 1024                  # Vektorlänge des Modells (bge-m3: 1024, e5-small: 384)
+  document_prefix: ""        # bge-m3 braucht keine Präfixe (e5-Modelle: "passage: " / "query: ")
+  query_prefix: ""
+  batch_size: 32
+  meta_fields_to_embed: [website, title]   # A3.2 Kontext-Kopf
+
+queries:                     # B2
+  mode: apertus              # apertus = Apertus schreibt hypothetische Abschnitte (HyDE), direct = Buzzwords unverändert
+  passages_per_buzzword: 2   # so viele hypothetische Abschnitte pro Buzzword
+
+search:                      # B3, in der UI überschreibbar
+  top_k: 100                 # Stücke pro Suchbegriff
+  top_n: 30                  # Seiten an Apertus
+  max_per_site: 8
+  min_similarity: 0.0        # B3.7 Relevanz-Schwelle (am Testset einstellen)
+  weak_similarity: 0.6        # nur Anzeige: Treffer darunter werden in der UI als schwach markiert
+  variant_similarity: 0.95   # B3.5: ab dieser Ähnlichkeit gelten zwei Seiten als Varianten derselben Seite
+
+llm:                         # Apertus-API; URL, Key und Modelle stehen in den Einstellungen (data/settings.json)
+  temperature: 0
+  stream: true               # Antwort stückweise empfangen (verhindert Gateway-Timeouts bei langen Antworten)
+  response_format: json_schema  # json_schema: API erzwingt die Struktur aus der Prompt-Datei; json_object; none (JSON aus dem Text lesen)
+  timeout: 300
+  max_tokens: 6000           # höchstens so lange Antworten (Tokens); stoppt Modelle, die sich in Wiederholungen verlieren
+  max_retries: 2
+  json_attempts: 2           # Versuche, bis die Antwort gültiges JSON ist (danach Fehler)
+
+brief:
+  language: English           # Sprache von Titel, Kategorie und Zusammenfassung
+  max_items: 15               # höchstens so viele Punkte pro Antwort (maxItems im JSON-Schema)
+
+agent:                       # Orchestrator im Chat
+  max_steps: 15               # höchstens so viele Modellaufrufe pro Nachricht
+
+check:                       # B5
+  evidence_min_ratio: 90     # Zitat muss zu mindestens so viel % in einer Quellseite stehen
+  summary_min_similarity: 0.5   # darunter wird ein Punkt markiert

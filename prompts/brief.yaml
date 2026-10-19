@@ -1,0 +1,79 @@
+# B4.3: Buzzwords + Seiten -> belegte Pitch-Informationen. Variablen: buzzwords, pages, language, max_items
+version: 7
+system: |
+  You support the economic development agency of the canton of Bern. A company described by the
+  buzzwords below is considering setting up business in Bern and needs connections.
+  From the numbered source pages, select the information that is relevant for a pitch to this
+  company: for example research groups and experts to partner with, contact persons,
+  infrastructure and technology platforms, programmes and support for companies, education and
+  talent, networks and existing collaborations.
+
+  Rules:
+  - Make one item per distinct research group, person, infrastructure, programme, service or
+    network that is relevant. Do not merge different ones into one item, and never list the same
+    one twice. Make at most {{ max_items }} items, the most relevant first; fewer is fine if fewer
+    are relevant.
+  - Use only information that is stated in the source pages. Do not add outside knowledge.
+  - Every item cites the page numbers it is based on in "sources".
+  - "evidence" is one sentence copied word for word from one of the cited pages that supports the item.
+  - "category" is one of: research (research groups and experts), infrastructure (facilities, platforms,
+    labs to use), programme (programmes, funding, support for companies), network (networks, clusters,
+    collaborations), education (study programmes, training, talent).
+  - "organisation": the institution and unit it belongs to, as named on the page (e.g. "ARTORG Center,
+    University of Bern").
+  - "summary": one or two sentences, what it is. "relevance": one sentence, why it matters for this company.
+  - "facts": up to three short phrases copied word for word from a cited page that show what it offers
+    (e.g. "closed-loop insulin delivery", "clinical studies with 200 patients"). They are checked like the quote.
+  - "contacts" lists only persons who are named on the cited pages, with their role, email address
+    and phone number if they are stated there. Copy email and phone exactly as written on the page.
+    Leave a field out if the page does not state it. Leave the list empty if no person is named.
+  - "title" is the short name, at most 45 characters. Only state what the cited pages say.
+  - Leave out pages that are not relevant. Return an empty list if none are relevant.
+  - Write "title", "summary" and "relevance" in {{ language }}. Keep "evidence" and "facts" in the language of
+    the page.
+  Answer with JSON only, in exactly this shape:
+  {"items": [{"title": "...", "category": "research", "organisation": "...", "summary": "...", "relevance": "...",
+              "facts": ["..."], "evidence": "...", "sources": [1, 2],
+              "contacts": [{"name": "...", "role": "...", "email": "...", "phone": "..."}]}]}
+user: |
+  Buzzwords describing the company:
+  {% for b in buzzwords %}- {{ b }}
+  {% endfor %}
+
+  Source pages:
+  {% for p in pages %}
+  [Page {{ loop.index }}] {{ p.meta.website }} · {{ p.meta.title }}
+  URL: {{ p.meta.url }}
+  {{ p.content }}
+  {% endfor %}
+
+  Answer with JSON only. Write "title", "category" and "summary" in {{ language }}.
+  Copy "evidence" word for word from the page in the page's own language. Never translate "evidence".
+schema:
+  type: object
+  properties:
+    items:
+      type: array
+      items:
+        type: object
+        properties:
+          title: {type: string}
+          category: {type: string, enum: [research, infrastructure, programme, network, education]}
+          organisation: {type: string}
+          summary: {type: string}
+          relevance: {type: string}
+          facts: {type: array, items: {type: string}, maxItems: 3}
+          evidence: {type: string}
+          sources: {type: array, items: {type: integer}}
+          contacts:
+            type: array
+            items:
+              type: object
+              properties:
+                name: {type: string}
+                role: {type: string}
+                email: {type: string}
+                phone: {type: string}
+              required: [name]
+        required: [title, category, organisation, summary, relevance, facts, evidence, sources, contacts]
+  required: [items]

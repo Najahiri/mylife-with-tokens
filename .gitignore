@@ -1,0 +1,6 @@
+data/
+.venv/
+__pycache__/
+*.tmp
+frontend/node_modules/
+frontend/dist/

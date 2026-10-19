@@ -1,0 +1,254 @@
+{
+  "author": "Anna Müller",
+  "company": "Alpenwerk AG",
+  "organizer": "Amt für Wirtschaft, Kanton Bern",
+  "classification": "Klassifizierung: intern",
+  "date": "2026-10-18",
+  "title_image": "assets/photo-light.jpg",
+  "expertises": [
+    {
+      "title": "Digitale Transformation",
+      "description": "Wir begleiten Verwaltungen und KMU von der Analyse bestehender Prozesse bis zur Einführung digitaler Lösungen – pragmatisch, messbar und nah an den Nutzenden.",
+      "contacts": [
+        {
+          "name": "Lukas Meier",
+          "function": "Leiter Digital Services",
+          "email": "lukas.meier@alpenwerk.ch",
+          "phone": "+41 31 555 12 01"
+        },
+        {
+          "name": "Sara Keller",
+          "function": "Senior Consultant",
+          "email": "sara.keller@alpenwerk.ch"
+        },
+        {
+          "name": "Marco Rossi",
+          "function": "Solution Architect",
+          "phone": "+41 31 555 12 03"
+        }
+      ]
+    },
+    {
+      "title": "Datenanalyse & KI",
+      "description": "Aus Daten werden Entscheidungsgrundlagen: Dashboards, Prognosemodelle und KI-Anwendungen, die sicher und datenschutzkonform betrieben werden.",
+      "contacts": [
+        {
+          "name": "Julia Brunner",
+          "function": "Head of Data",
+          "email": "julia.brunner@alpenwerk.ch",
+          "phone": "+41 31 555 13 10"
+        },
+        {
+          "name": "Thomas Weber",
+          "function": "Data Scientist",
+          "email": "thomas.weber@alpenwerk.ch"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "title": "Abgeschlossene KI-Projekte pro Jahr",
+        "data": [
+          {
+            "label": "2021",
+            "value": 4
+          },
+          {
+            "label": "2022",
+            "value": 7
+          },
+          {
+            "label": "2023",
+            "value": 12
+          },
+          {
+            "label": "2024",
+            "value": 18
+          },
+          {
+            "label": "2025",
+            "value": 25
+          }
+        ]
+      }
+    },
+    {
+      "title": "Nachhaltige Infrastruktur",
+      "description": "Planung und Betrieb energieeffizienter Gebäude- und IT-Infrastruktur.",
+      "contacts": [
+        {
+          "name": "Nina Schmid",
+          "function": "Projektleiterin Energie",
+          "email": "nina.schmid@alpenwerk.ch",
+          "phone": "+41 31 555 14 22"
+        }
+      ],
+      "chart": {
+        "type": "pie",
+        "title": "Energieeinsparung nach Massnahme (%)",
+        "data": [
+          {
+            "label": "Gebäudehülle",
+            "value": 35
+          },
+          {
+            "label": "Heizung & Lüftung",
+            "value": 30
+          },
+          {
+            "label": "Rechenzentrum",
+            "value": 20
+          },
+          {
+            "label": "Beleuchtung",
+            "value": 15
+          }
+        ]
+      }
+    },
+    {
+      "title": "Cybersecurity",
+      "description": "Sicherheitsanalysen, Penetrationstests und der Aufbau von Security-Operations-Prozessen, damit kritische Systeme auch unter Druck verfügbar bleiben.",
+      "contacts": [
+        {
+          "name": "David Frei",
+          "function": "Chief Information Security Officer",
+          "email": "david.frei@alpenwerk.ch",
+          "phone": "+41 31 555 15 01"
+        },
+        {
+          "name": "Elena Graf",
+          "function": "Security Analyst",
+          "email": "elena.graf@alpenwerk.ch"
+        }
+      ]
+    },
+    {
+      "title": "Mobilität & Logistik",
+      "description": "Wir optimieren Verkehrsflüsse, Lieferketten und Flottenmanagement mit Simulationen und Echtzeitdaten. Von der Machbarkeitsstudie über Pilotprojekte bis zum Regelbetrieb begleiten wir Gemeinden, Transportunternehmen und Industriebetriebe – mit besonderem Fokus auf multimodale Angebote, die Verlagerung auf die Schiene und eine messbare Reduktion der CO₂-Emissionen im gesamten Kanton.",
+      "contacts": [
+        {
+          "name": "Fabian Zürcher",
+          "function": "Teamleiter Mobilität",
+          "email": "fabian.zuercher@alpenwerk.ch",
+          "phone": "+41 31 555 16 11"
+        },
+        {
+          "name": "Laura Hofer",
+          "function": "Verkehrsplanerin",
+          "phone": "+41 31 555 16 12"
+        },
+        {
+          "name": "Reto Baumann",
+          "function": "Logistikexperte",
+          "email": "reto.baumann@alpenwerk.ch"
+        }
+      ]
+    },
+    {
+      "title": "Gesundheitswesen",
+      "description": "Digitale Patientendossiers, Prozessoptimierung in Spitälern und Beratung bei der Umsetzung kantonaler Gesundheitsstrategien.",
+      "contacts": [
+        {
+          "name": "Dr. Claudia Lüthi",
+          "function": "Leiterin Health Consulting",
+          "email": "claudia.luethi@alpenwerk.ch",
+          "phone": "+41 31 555 17 20"
+        }
+      ]
+    },
+    {
+      "title": "Bildung & Weiterbildung",
+      "description": "Massgeschneiderte Schulungsprogramme, E-Learning-Plattformen und Coaching für Fach- und Führungskräfte.",
+      "contacts": [
+        {
+          "name": "Simon Gerber",
+          "function": "Bildungsverantwortlicher",
+          "email": "simon.gerber@alpenwerk.ch"
+        },
+        {
+          "name": "Mia Steiner",
+          "function": "Instructional Designerin",
+          "email": "mia.steiner@alpenwerk.ch",
+          "phone": "+41 31 555 18 05"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "title": "Teilnehmende pro Kursformat",
+        "data": [
+          {
+            "label": "Präsenz",
+            "value": 420
+          },
+          {
+            "label": "Online",
+            "value": 980
+          },
+          {
+            "label": "Blended",
+            "value": 610
+          },
+          {
+            "label": "Coaching",
+            "value": 140
+          }
+        ]
+      }
+    },
+    {
+      "title": "Finanzen & Controlling",
+      "description": "Budgetplanung, Kostenrechnung und Wirkungscontrolling für öffentliche Verwaltungen und Unternehmen.",
+      "contacts": [
+        {
+          "name": "Patrick Wyss",
+          "function": "Senior Controller",
+          "email": "patrick.wyss@alpenwerk.ch",
+          "phone": "+41 31 555 19 30"
+        },
+        {
+          "name": "Andrea Kunz",
+          "function": "Finanzanalystin",
+          "email": "andrea.kunz@alpenwerk.ch"
+        },
+        {
+          "name": "Jonas Imhof",
+          "phone": "+41 31 555 19 32"
+        }
+      ],
+      "chart": {
+        "type": "pie",
+        "title": "Mandate nach Kundengruppe",
+        "data": [
+          {
+            "label": "Kanton",
+            "value": 14
+          },
+          {
+            "label": "Gemeinden",
+            "value": 22
+          },
+          {
+            "label": "KMU",
+            "value": 31
+          },
+          {
+            "label": "Grossunternehmen",
+            "value": 9
+          }
+        ]
+      }
+    },
+    {
+      "title": "Innovation & Start-ups",
+      "description": "Wir vernetzen etablierte Unternehmen mit jungen Firmen aus dem Berner Innovationsökosystem und begleiten gemeinsame Pilotprojekte.",
+      "contacts": [
+        {
+          "name": "Lea Moser",
+          "function": "Innovation Managerin",
+          "email": "lea.moser@alpenwerk.ch",
+          "phone": "+41 31 555 20 40"
+        }
+      ]
+    }
+  ]
+}

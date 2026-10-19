@@ -1,0 +1,132 @@
+# Websites für den Crawler. Wird über die UI (Seite "Quellen") gepflegt.
+# Felder: name (Kennung), desc (Bezeichnung), url (Startseite), optional: sitemaps, max_pages, enabled
+sources:
+- name: www.unibe.ch
+  desc: Université de Berne – site principal
+  url: https://www.unibe.ch/
+- name: mediarelations.unibe.ch
+  desc: Relations médias
+  url: https://mediarelations.unibe.ch/
+- name: philnat.unibe.ch
+  desc: Faculté des sciences
+  url: https://www.philnat.unibe.ch/
+- name: medizin.unibe.ch
+  desc: Faculté de médecine
+  url: https://www.medizin.unibe.ch/
+- name: vetsuisse.unibe.ch
+  desc: Faculté Vetsuisse
+  url: https://www.vetsuisse.unibe.ch/
+- name: soz.unibe.ch
+  desc: Institut de sociologie
+  url: https://www.soz.unibe.ch/
+- name: psy.unibe.ch
+  desc: Institut de psychologie
+  url: https://www.psy.unibe.ch/
+- name: math.unibe.ch
+  desc: Institut de mathématiques
+  url: https://www.math.unibe.ch/
+- name: aiub.unibe.ch
+  desc: Institut d'astronomie
+  url: https://www.aiub.unibe.ch/
+- name: physik.unibe.ch
+  desc: Physique et astronomie
+  url: https://www.physik.unibe.ch/
+- name: phinst.unibe.ch
+  desc: Institut de physique
+  url: https://www.phinst.unibe.ch/
+- name: biology.unibe.ch
+  desc: Département de biologie
+  url: https://www.biology.unibe.ch/
+- name: iee.unibe.ch
+  desc: Institut d'écologie et évolution
+  url: https://www.iee.unibe.ch/
+- name: ips.unibe.ch
+  desc: Institut des sciences végétales
+  url: https://www.ips.unibe.ch/
+- name: izb.unibe.ch
+  desc: Institut de biologie cellulaire
+  url: https://www.izb.unibe.ch/
+- name: geo.unibe.ch
+  desc: Institut de géologie
+  url: https://www.geo.unibe.ch/
+- name: geo2.unibe.ch
+  desc: Institut de géologie (domaine alternatif)
+  url: https://www.geo2.unibe.ch/
+  enabled: false
+- name: cde.unibe.ch
+  desc: Centre for Development and Environment
+  url: https://www.cde.unibe.ch/
+- name: oeschger.unibe.ch
+  desc: Oeschger Centre for Climate Change Research
+  url: https://www.oeschger.unibe.ch/
+- name: bcpm.unibe.ch
+  desc: Bern Center for Precision Medicine
+  url: https://www.bcpm.unibe.ch/
+- name: dbmr.unibe.ch
+  desc: Department for BioMedical Research (DBMR)
+  url: https://www.dbmr.unibe.ch/
+- name: ngs.unibe.ch
+  desc: Next Generation Sequencing Platform
+  url: https://www.ngs.unibe.ch/
+- name: tki.unibe.ch
+  desc: Theodor Kocher Institute
+  url: https://www.tki.unibe.ch/
+- name: iml.unibe.ch
+  desc: Institut für Medizinische Lehre (IML)
+  url: https://www.iml.unibe.ch/
+- name: irm.unibe.ch
+  desc: Institut für Rechtsmedizin (IRM)
+  url: https://www.irm.unibe.ch/
+- name: ifik.unibe.ch
+  desc: Institute for Infectious Diseases (IFIK)
+  url: https://www.ifik.unibe.ch/
+- name: ispm.unibe.ch
+  desc: Institute of Social and Preventive Medicine (ISPM)
+  url: https://www.ispm.unibe.ch/
+- name: ikim.unibe.ch
+  desc: Institut für Komplementäre und Integrative Medizin (IKIM)
+  url: https://www.ikim.unibe.ch/
+- name: img.unibe.ch
+  desc: Institut für Medizingeschichte
+  url: https://www.img.unibe.ch/
+- name: ibmm.unibe.ch
+  desc: Institut für Biochemie und Molekulare Medizin (IBMM)
+  url: https://www.ibmm.unibe.ch/
+- name: pki.unibe.ch
+  desc: Institut für Pharmakologie (PKI)
+  url: https://www.pki.unibe.ch/
+- name: artorg.unibe.ch
+  desc: ARTORG Center for Biomedical Engineering Research
+  url: https://www.artorg.unibe.ch/
+- name: inf.unibe.ch
+  desc: Institute of Computer Science
+  url: https://www.inf.unibe.ch/
+- name: itp.unibe.ch
+  desc: Institute for Theoretical Physics
+  url: https://www.itp.unibe.ch/
+- name: iap.unibe.ch
+  desc: Institute of Applied Physics
+  url: https://www.iap.unibe.ch/
+- name: dcbp.unibe.ch
+  desc: Department of Chemistry, Biochemistry and Pharmaceutical Sciences
+  url: https://www.dcbp.unibe.ch/
+- name: csh.unibe.ch
+  desc: Center for Space and Habitability (CSH)
+  url: https://www.csh.unibe.ch/
+- name: mic.unibe.ch
+  desc: Microscopy Imaging Center (MIC)
+  url: https://www.mic.unibe.ch/
+- name: strada.unibe.ch
+  desc: STRADA – réseau interdisciplinaire UniBE
+  url: https://strada.unibe.ch/
+- name: neuroscience.unibe.ch
+  desc: Clinical Neuroscience Bern
+  url: https://www.neuroscience.unibe.ch/
+- name: ita.vetsuisse.unibe.ch
+  desc: Division of Veterinary Anatomy
+  url: https://www.ita.vetsuisse.unibe.ch/
+- name: dcberne.com
+  desc: Diabetes Center Berne
+  url: https://www.dcberne.com
+  sitemaps:
+  - https://www.dcberne.com/sitemap_index.xml

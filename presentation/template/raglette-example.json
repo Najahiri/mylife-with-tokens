@@ -1,0 +1,157 @@
+{
+  "company": "Example AG",
+  "author": "Anna Muster",
+  "organizer": "Standortförderung Kanton Bern",
+  "categories": [
+    "research",
+    "infrastructure",
+    "programme",
+    "network",
+    "education"
+  ],
+  "labels": {
+    "kicker": "Business Case",
+    "subtitle": "What Bern brings to the table",
+    "speaker": "Speaker",
+    "contacts": "Contacts",
+    "source": "Source",
+    "overview": "At a glance",
+    "overview_cols": [
+      "Category",
+      "Partner",
+      "Organisation"
+    ],
+    "what": "What it is",
+    "why": "Why it matters for Example AG",
+    "facts": "Key facts",
+    "contacts_title": "Your contacts in Bern",
+    "contacts_cols": [
+      "Name",
+      "Role",
+      "Topic",
+      "Contact"
+    ]
+  },
+  "items": [
+    {
+      "title": "Orthopedic Traumatology Research Group",
+      "category": "research",
+      "category_label": "Research partner",
+      "organisation": "",
+      "summary": "Orthopedic Traumatology research group at Inselspital conducts clinical studies on knee ligament injuries and complex knee arthroplasty—relevant for ice hockey injury prevention and treatment.",
+      "relevance": "",
+      "facts": [],
+      "evidence": "The main focus of the knee research group lies in the establishment of 3-dimensional templating for fracture repair and ligament reconstructions and on-site 3D printing of surgical guides. Further research activities include clinical studies on ligamentous injuries of the knee and complex knee arthroplasty.",
+      "contacts": [
+        {
+          "name": "Faculté de médecine",
+          "url": "https://www.medizin.unibe.ch/profiles/university_clinics_inselspital/department_of_orthopedic_surgery_and_traumatology/index_eng.html",
+          "url_label": "Profiles: Department of Orthopedic Surgery and [...]"
+        }
+      ],
+      "sources": [
+        {
+          "label": "Faculté de médecine",
+          "url": "https://www.medizin.unibe.ch/profiles/university_clinics_inselspital/department_of_orthopedic_surgery_and_traumatology/index_eng.html"
+        }
+      ]
+    },
+    {
+      "title": "ARTORG Musculoskeletal Biomechanics Group",
+      "category": "research",
+      "category_label": "Research partner",
+      "organisation": "",
+      "summary": "ARTORG Musculoskeletal Biomechanics Group provides expertise in biomechanical modeling of bone and implants, applicable to analyzing impact forces and protective equipment effectiveness in ice hockey.",
+      "relevance": "",
+      "facts": [],
+      "evidence": "Motivated by prevention, diagnosis, and treatment of bone diseases, the research of the Musculoskeletal Biomechanics Group focuses on multi-scale structure-function relationships of bone from the extracellular matrix to the organ level.",
+      "contacts": [
+        {
+          "name": "ARTORG Center for Biomedical Engineering Research",
+          "url": "https://www.artorg.unibe.ch/research/msb/research/index_eng.html",
+          "url_label": "Research - ARTORG Center for Biomedical Engineering Research"
+        }
+      ],
+      "sources": [
+        {
+          "label": "ARTORG Center for Biomedical Engineering Research",
+          "url": "https://www.artorg.unibe.ch/research/msb/research/index_eng.html"
+        }
+      ]
+    },
+    {
+      "title": "ARTORG Tissue under Forces Lab",
+      "category": "research",
+      "category_label": "Research partner",
+      "organisation": "",
+      "summary": "ARTORG Tissue under Forces lab creates organ-on-chip models to simulate tissue responses to mechanical stress—useful for studying ice hockey impact injuries and testing protective gear.",
+      "relevance": "",
+      "facts": [],
+      "evidence": "The group develops a novel alveoli-on-chip platform for modeling cyclic stretch in patient-derived alveolar epithelial cells cultured from organoids.",
+      "contacts": [
+        {
+          "name": "ARTORG Center for Biomedical Engineering Research",
+          "url": "https://www.artorg.unibe.ch/research/ooc/research/functional__disease_profiling/tissue_under_forces/index_eng.html",
+          "url_label": "Research: Tissue under forces - ARTORG Center for [...]"
+        }
+      ],
+      "sources": [
+        {
+          "label": "ARTORG Center for Biomedical Engineering Research",
+          "url": "https://www.artorg.unibe.ch/research/ooc/research/functional__disease_profiling/tissue_under_forces/index_eng.html"
+        }
+      ]
+    },
+    {
+      "title": "Center for Artificial Intelligence in Medicine (CAIM)",
+      "category": "infrastructure",
+      "category_label": "Infrastructure",
+      "organisation": "",
+      "summary": "CAIM platform uses AI to analyze complex cardiac data for personalized diagnosis and treatment of injuries, supporting athlete cardiac screening and rehabilitation planning for ice hockey players.",
+      "relevance": "",
+      "facts": [],
+      "evidence": "Only AI can evaluate these many variables quickly in their entirety. We want to let the data speak to better understand what exactly happens during myocarditis.",
+      "contacts": [
+        {
+          "name": "Relations médias",
+          "url": "https://mediarelations.unibe.ch/media_releases/2022/media_releases_2022/ai_enables_personalized_treatment_of_heart_muscle_inflammation/index_eng.html",
+          "url_label": "AI enables personalized treatment of heart muscle [...]"
+        }
+      ],
+      "sources": [
+        {
+          "label": "Relations médias",
+          "url": "https://mediarelations.unibe.ch/media_releases/2022/media_releases_2022/ai_enables_personalized_treatment_of_heart_muscle_inflammation/index_eng.html"
+        }
+      ]
+    },
+    {
+      "title": "CAS in Movement and Sports Therapy",
+      "category": "programme",
+      "category_label": "Programme & funding",
+      "organisation": "",
+      "summary": "CAS in Movement and Sports Therapy offers specialized training for designing rehabilitation programs for athletes recovering from chronic injuries, including those common in ice hockey.",
+      "relevance": "",
+      "facts": [],
+      "evidence": "Der CAS-Studiengang Bewegungs- und Sporttherapie bei chronischen Erkrankungen ist eine berufsbegleitende, praxisorientierte und theoriegestützte Spezialausbildung. Er vermittelt die praktischen Kompetenzen und theoretischen Kenntnisse, um Gruppenbehandlungen nach den Prinzipien des Lern- und Trainingsprogrammes der …",
+      "contacts": [
+        {
+          "name": "Catherine Marchand",
+          "function": "Administration",
+          "email": "sporttherapie.med@unibe.ch"
+        },
+        {
+          "name": "Antje Meissner",
+          "function": "Administration",
+          "email": "sporttherapie.med@unibe.ch"
+        }
+      ],
+      "sources": [
+        {
+          "label": "Université de Berne – site principal",
+          "url": "https://www.unibe.ch/weiterbildungsangebote/cas_bewegungs__und_sporttherapie_chronische_erkrankungen/index_ger.html"
+        }
+      ]
+    }
+  ]
+}
