@@ -64,7 +64,7 @@ function SourcesEditor({ initial }: { initial: Source[] }) {
     .filter(({ r }) => !q || `${r.desc} ${r.url} ${r.name}`.toLowerCase().includes(q));
 
   return (
-    <div className="flex flex-col gap-8 pt-10">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 pt-10 pb-24">
       <div className="flex flex-col gap-2">
         <h1 className="text-5xl leading-none font-bold tracking-[-0.02em]">Sources</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">

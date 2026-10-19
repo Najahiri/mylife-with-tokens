@@ -48,12 +48,9 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
     tab === t ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-primary");
 
   return (
-    <aside className="flex flex-col gap-4 lg:h-[calc(100vh-9rem)]">
+    <aside className="flex flex-col gap-4 lg:min-h-0">
+      <h2 className="sr-only">Presentation</h2>
       <div className="flex items-end gap-4">
-        <div className="flex flex-col gap-1.5">
-          <span className="eyebrow text-primary">Result</span>
-          <h2 className="text-4xl leading-none font-bold">Presentation</h2>
-        </div>
         <div className="ml-auto flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setViewing(0)} disabled={!slides.length}>
             <Expand /> View

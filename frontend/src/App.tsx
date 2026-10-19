@@ -16,7 +16,7 @@ export default function App() {
       <TooltipProvider delayDuration={150}>
         <BrowserRouter>
           <Header />
-          <main className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6">
+          <main className="mx-auto w-full max-w-[96rem] px-4 sm:px-6">
             <Routes>
               <Route path="/" element={<ChatPage />} />
               <Route path="/sources" element={<SourcesPage />} />

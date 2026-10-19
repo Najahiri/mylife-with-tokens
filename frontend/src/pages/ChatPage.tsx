@@ -122,12 +122,11 @@ export function ChatPage() {
   const results = new Map(events.filter((e): e is ToolResult => e.type === "tool_result").map((e) => [e.id, e]));
 
   return (
-    <div className="grid gap-8 pt-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,30rem)]">
+    <div className="grid gap-6 py-5 lg:h-[calc(100vh-5rem)] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:grid-rows-[minmax(0,1fr)]">
       {/* conversation */}
-      <section className="flex min-h-[32rem] flex-col gap-4 lg:h-[calc(100vh-9rem)]">
+      <section className="flex min-h-[32rem] flex-col gap-4 lg:min-h-0">
         <h1 className="sr-only">Chat with the agent</h1>
-        {/* as tall as the "Presentation" heading next to it, so both columns start on one line */}
-        <div className="flex min-h-[3.75rem] items-end gap-4">
+        <div className="flex items-end gap-4">
           <Button variant="outline" size="sm" className="ml-auto" onClick={reset} disabled={running || !events.length}>
             <Plus /> New conversation
           </Button>

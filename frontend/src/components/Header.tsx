@@ -12,7 +12,7 @@ export function Header() {
 
   return (
     <header className="relative bg-deck text-deck-foreground">
-      <div className="mx-auto flex h-20 max-w-6xl items-center gap-10 px-4 sm:px-6">
+      <div className="mx-auto flex h-20 max-w-[96rem] items-center gap-10 px-4 sm:px-6">
         <NavLink to="/" className="font-display text-[34px] leading-none font-extrabold tracking-[-0.02em] text-white"
                  aria-label="RAGlette">
           <span className="text-primary">RAG</span>lette

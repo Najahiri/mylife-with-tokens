@@ -17,18 +17,21 @@ export function SettingsPage() {
     return <div className="pt-10"><ErrorNote error={settings.error || config.error} /></div>;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-8 pt-10">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-5xl leading-none font-bold tracking-[-0.02em]">Settings</h1>
-        <p className="text-sm text-muted-foreground">
-          All parameters of the pipeline. Changed values apply to all requests until they are reset.
-        </p>
+    // same width as the other pages, the form itself stays narrow
+    <div className="mx-auto w-full max-w-6xl pt-10 pb-24">
+      <div className="flex max-w-3xl flex-col gap-8">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-5xl leading-none font-bold tracking-[-0.02em]">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            All parameters of the pipeline. Changed values apply to all requests until they are reset.
+          </p>
+        </div>
+        <ApiAccess llm={settings.data.llm} />
+        {config.data.groups.map((g) => (
+          // the key remounts a group with fresh values after saving or resetting
+          <ConfigGroupForm key={`${g.section}-${JSON.stringify(g.fields.map((f) => f.value))}`} group={g} />
+        ))}
       </div>
-      <ApiAccess llm={settings.data.llm} />
-      {config.data.groups.map((g) => (
-        // the key remounts a group with fresh values after saving or resetting
-        <ConfigGroupForm key={`${g.section}-${JSON.stringify(g.fields.map((f) => f.value))}`} group={g} />
-      ))}
     </div>
   );
 }
