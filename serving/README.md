@@ -140,27 +140,26 @@ Use Settings in the frontend or set these backend environment variables:
 ```sh
 export APERTUS_BASE_URL=https://gateway.keera.ch/api/v1
 export APERTUS_API_KEY=your-keera-key
-export APERTUS_CHAT_MODEL=apertus-v1-5-8b
+export APERTUS_MODEL_8B=apertus-v1-5-8b
+export APERTUS_MODEL_70B=apertus-v1-5-70b
 export APERTUS_DECISION_URL=https://your-decision-service/decide
 export APERTUS_DECISION_API_KEY=your-decision-key
 export APERTUS_DECISION_MODEL=HX-Tfd/Apertus-1.5-8B-Decision
 ```
 
-Existing `model_queries`, `model_brief`, and `model_agent` settings remain explicit
-overrides. Set all three to `apertus-v1-5-8b` (or `apertus-v1-5-70b`) in Settings.
-Known HF stock model names are mapped to Keera aliases only when using the Keera
-URL. Custom model endpoints keep their own model names. Connection testing includes decision inference
-when its URL is configured. Both API keys are omitted from settings responses.
+Settings exposes the 8B and 70B instruction model IDs used by the router. Legacy `model_queries`,
+`model_brief`, and `model_agent` values remain initialization defaults; per-call routing overrides
+the generation model for pipeline requests. Known HF stock names are mapped to Keera aliases only
+when using the Keera URL. Custom endpoints keep their own model names and must serve both configured
+models. Connection testing checks routed generation and decision inference. Keys are omitted from responses.
 
-The agent uses the decision endpoint at every step to choose the next tool or
-`answer`. Chat then generates exactly one selected tool's arguments, or a final
-answer with tool calling disabled. Calls to a different tool are rejected before
-execution. Search results are reranked with the decision model: the first eight
-retrieved pages form a shortlist, and the remaining pages retain retrieval order.
-`agent.rank_candidates` controls the shortlist size (2–8). Empty/single-result
-searches skip scoring. Each action choice and ranking records model revisions and
-probabilities in the existing session traces. There is no chat-only fallback if
-the decision API is missing or fails.
+The decision endpoint selects 8B or 70B before every pipeline LLM call, including repairs, retrieval
+assessment, and fact checks. The LLM first decides whether the current request needs retrieval, then
+chooses its own tools or answers directly. Non-retrieval turns can edit slides without searching.
+Search results retain their retrieval order; the decision service no longer reranks them.
+Model choices, probabilities, checkpoint revisions and actual generation models are recorded in local
+pipeline logs. There is no silent fallback if routing fails. Reusing the current checkpoint for model
+selection changes its task; evaluate routing quality before relying on its cost/quality tradeoffs.
 
 Custom pipeline code can also call the decision client independently:
 

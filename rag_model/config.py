@@ -22,10 +22,8 @@ SCHEMA = [
      "applies": "from the next message", "editable": True,
      "fields": [
          {"key": "max_steps", "label": "Maximum steps per message", "type": "int", "min": 1, "max": 50,
-          "hint": "How many decision and generation steps one message may take. Stops a loop that "
-                  "does not come to an end."},
-         {"key": "rank_candidates", "label": "Decision ranking shortlist", "type": "int", "min": 2, "max": 8,
-          "hint": "Rank this many retrieved pages with the decision model; remaining pages keep retrieval order."},
+          "hint": "Maximum agent steps after the initial retrieval assessment. The decision model selects 8B "
+                  "or 70B separately for each LLM call, including repairs and fact checks."},
      ]},
     {"section": "brief", "title": "Slides", "intro": "What the agent writes on the slides.",
      "applies": "from the next message", "editable": True,
@@ -56,8 +54,8 @@ SCHEMA = [
      "applies": "from the next item", "editable": True,
      "fields": [
          {"key": "evidence_min_ratio", "label": "Quote must match (%)", "type": "int", "min": 50, "max": 100,
-          "hint": "How exactly the quote and the key facts must appear on the cited page. Lower lets more items "
-                  "through, but also invented evidence."},
+          "hint": "How exactly the evidence quote must appear on the cited page. Facts are checked semantically "
+                  "by the generation model. Lower lets more quotes through, but also invented evidence."},
          {"key": "summary_min_similarity", "label": "Summary matches quote from", "type": "float", "min": 0, "max": 1,
           "step": 0.01, "hint": "Below this, an item is flagged with \"summary differs from the quote\"."},
      ]},

@@ -1,4 +1,4 @@
-"""Agent: the decision model selects actions; instruction Apertus writes arguments and answers.
+"""Agent: the LLM selects tools; the decision model routes each LLM call to 8B or 70B.
 
     search(passages)      B3 search; the agent writes the hypothetical passages itself (replaces B2)
     read_pages(pages)     full page texts (B4.1)
@@ -11,9 +11,9 @@
 The current presentation (settings and every item) is part of the system prompt at every step, so the agent
 can edit what the user sees.
 
-The decision API selects one available tool or answer at each step, taking unfinished work into account.
-Named tool choice constrains chat generation to that action. Calls are checked again before execution.
-Search results have their retrieval shortlist reranked by the decision model.
+Before acting, the LLM assesses whether the current user request needs retrieval.
+The LLM chooses its own tools from those eligible for the current state; the separate decision
+model chooses 8B or 70B for every LLM call, including assessment, repair and fact checking.
 An identical repeated tool call is not run again.
 
 Apertus sometimes writes its reasoning into the text, ended by <|inner_suffix|>, or a tool call in its raw
@@ -53,7 +53,7 @@ from rag_model.llm import generator, run_logged
 from rag_model.pipeline_log import PipelineTrace, record, set_step
 from rag_model.presentation import DECK, category
 from rag_model.search import ROOT, Searcher
-from rag_model.policy import rank_candidates, select_action, validate_generation
+from rag_model.retrieval import assess_retrieval
 
 SESSIONS = ROOT / "data" / "sessions"
 
@@ -64,19 +64,10 @@ CHANGES = (
     "edit_item",
     "update_presentation",
 )  # tools that change what the user sees
-NUDGES = 3
 CUT_OFF = (
     "Your last answer was cut off at the length limit. Work in smaller steps: add at most 5 items per "
     "add_items call, and keep your text short."
 )
-
-
-def _force(tool: str) -> dict:
-    return {
-        "generation_kwargs": {
-            "tool_choice": {"type": "function", "function": {"name": tool}}
-        }
-    }
 
 
 def _step_tools(tools: list, action: str, s: "Session") -> list | None:
@@ -341,20 +332,6 @@ def _search(s: Session, searcher: Searcher, passages: list[str]) -> tuple[str, d
         dict.fromkeys(p.strip() for p in passages if isinstance(p, str) and p.strip())
     )
     found = searcher.search(terms) if terms else []
-    order, ranking = rank_candidates(
-        {"search_passages": " ".join(terms)[:400]},
-        [
-            {
-                "page_id": p.page_id,
-                "title": p.title,
-                "website": p.website,
-                "snippet": p.snippet,
-            }
-            for p in found
-        ],
-        limit=config.load()["agent"]["rank_candidates"],
-    )
-    found = [found[index] for index in order]
     lines = []
     for p in found:
         n = s.number(p.page_id)
@@ -376,14 +353,13 @@ def _search(s: Session, searcher: Searcher, passages: list[str]) -> tuple[str, d
             f"[{n}] {p.website} · {p.title}{seen}\n    {p.url}\n    best match ({p.similarity:.2f}): {excerpt}"
         )
     text = (
-        f"{len(found)} pages, decision-ranked shortlist first:\n" + "\n".join(lines)
+        f"{len(found)} pages, best first:\n" + "\n".join(lines)
         if found
         else "No pages found. Try other passages."
     )
     return text, {
         "passages": terms,
         "pages": [_page_info(s, s.number(p.page_id)) for p in found],
-        "decision_ranking": ranking,
     }
 
 
@@ -858,7 +834,7 @@ def _trailing_calls(text: str) -> tuple[str, list[tuple[str, dict]]]:
     """Recover a complete call suffix, including prose followed by tool JSON.
 
     Quoted examples stay text. Every recovered call still has to match the
-    decision-selected action before execution or display.
+    available tool schema before execution or display.
     """
     calls = _json_calls(text)
     if calls:
@@ -985,8 +961,8 @@ def _completed_calls(s: Session) -> set[str]:
     }
 
 
-def _decision_state(s: Session, text: str, pending: str | None) -> dict:
-    """Compact, readable progress for the 2048-token decision service input."""
+def _context_state(s: Session, text: str, pending: str | None) -> dict:
+    """Compact conversation progress for the retrieval assessment."""
     recent = []
     for message in s.messages[-3:]:
         role = getattr(message, "role", None)
@@ -1164,8 +1140,47 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         )
 
 
+def _available_tools(
+    s: Session,
+    tools: list,
+    *,
+    retrieval: bool,
+    pending: str | None,
+    blocked: set[str],
+    remaining: int,
+    worked: bool,
+    retrieval_started: bool = True,
+) -> list:
+    """State/validity guards; tool choice itself belongs to the LLM."""
+    if remaining == 1 and worked:
+        return []
+    allowed = []
+    unread = bool(set(range(1, len(s.pages) + 1)) - s.read)
+    for tool in tools:
+        name = tool.name
+        if name in blocked:
+            continue
+        if name in ("search", "read_pages") and not retrieval:
+            continue
+        if retrieval and not retrieval_started and name not in ("search", "read_pages"):
+            continue
+        if name == "read_pages" and (not unread or pending == "add_items"):
+            continue
+        if name == "search" and pending in ("read_pages", "add_items"):
+            continue
+        if name == "add_items" and not s.read:
+            continue
+        if name in ("remove_items", "edit_item") and not s.items:
+            continue
+        if name == "restore_items" and not s.trash:
+            continue
+        if remaining == 2 and pending == "add_items" and name != "add_items":
+            continue
+        allowed.extend(_step_tools(tools, name, s) or [tool])
+    return allowed
+
+
 def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
-    """Run one user message. Yields the events the UI shows; they are also kept in s.events."""
     t0 = time.time()
     cfg = config.load()
     max_items, max_steps = cfg["brief"]["max_items"], cfg["agent"]["max_steps"]
@@ -1184,10 +1199,9 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         if s.stop.is_set():
             raise Stopped()
 
-    llm = generator("agent", cfg["llm"], tools=tools, on_chunk=watch)
     start = len(s.events)
 
-    def emit(event: dict) -> dict:
+    def emit(event):
         record("agent_event", output=event)
         s.events.append(event)
         return event
@@ -1197,324 +1211,242 @@ def _turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
         ChatMessage.from_user("\n".join([*(f"[{n}]" for n in notes), text]))
     )
     yield emit({"type": "user", "text": text})
-    answered, nudges = False, 0
-    # Preserve unfinished research when a user continues a previous turn.
-    pending = (
-        "read_pages"
-        if s.pages and not s.read
-        else "add_items"
-        if s.read and not s.items
-        else None
+    assessment = assess_retrieval(
+        text,
+        {**_context_state(s, text, None), "presentation": _state(s)},
+        on_chunk=watch,
     )
-    done_calls = _completed_calls(s)
-    blocked_actions = set()
-    research_in_progress = False
-    turn_has_work = False
-    answer_reconsidered = False
-    generation_feedback = None
+    watch()
+    retrieval = assessment["needs_retrieval"]
+    yield emit(
+        {
+            "type": "note",
+            "text": ("Retrieval needed. " if retrieval else "No retrieval needed. ")
+            + assessment["reason"],
+            "retrieval": assessment,
+        }
+    )
+    llm = generator("agent", cfg["llm"], tools=tools, on_chunk=watch)
+    done_calls, blocked = _completed_calls(s), set()
+    pending, worked, answered, retrieval_started = None, False, False, False
     for step in range(1, max_steps + 1):
         watch()
         set_step(step)
-        decision_state = {
-            **_decision_state(s, text, pending),
-            "blocked_actions": sorted(blocked_actions),
-            "research_in_progress": research_in_progress,
-            "remaining_steps": max_steps - step + 1,
-            "turn_has_work": turn_has_work,
-        }
-        if generation_feedback:
-            decision_state["generation_feedback"] = generation_feedback
-        choice = select_action(decision_state, tools)
-        watch()
-        # An incompatible final answer excludes answer for one reconsideration,
-        # not for the rest of the conversation.
-        blocked_actions.discard("answer")
-        generation_feedback = None
-        action = choice["action"]
-        record(
-            "action_selected",
-            **choice,
-            action_probabilities=[
-                {"action": name, "probability": probability}
-                for name, probability in zip(choice["actions"], choice["probabilities"])
-            ],
+        available = _available_tools(
+            s,
+            tools,
+            retrieval=retrieval,
+            pending=pending,
+            blocked=blocked,
+            remaining=max_steps - step + 1,
+            worked=worked,
+            retrieval_started=retrieval_started,
         )
-        yield emit(
-            {
-                "type": "note",
-                "text": f"Decision model selected: {action}.",
-                "decision": choice,
-            }
+        names = {t.name for t in available}
+        must_work = bool(available) and (
+            pending is not None or (retrieval and not retrieval_started)
         )
+        tool_choice = "required" if must_work else "auto" if available else "none"
         instruction = (
-            "Write the final answer as plain language. Do not emit tool calls or tool-call JSON. "
-            "Address the user directly; omit self-narration about the assistant or its next step. "
-            "Report only items actually present in the presentation; do not claim slides were added if none exist. "
-            "A completed add_items call can add zero items: use its added/rejected counts, and explain rejection reasons."
-            if action == "answer"
-            else f"Generate exactly one {action} tool call with suitable arguments; do not call another tool."
-        )
-        if action == "read_pages":
-            unread = [n for n in range(1, len(s.pages) + 1) if n not in s.read]
-            instruction += (
-                f" Choose relevant pages ONLY from these unread page numbers: {unread}. "
-                "You may read several relevant pages in one call. "
-                "After this batch, compose checked items before requesting more pages."
+            "Choose the next useful tool yourself and generate exactly one call, or answer the user directly. "
+            "Do not narrate internal reasoning. Finish in plain language, never tool-call JSON. "
+            "Report only the items actually added to the presentation, using added/rejected counts. "
+            f"Retrieval assessment: {assessment['reason']} "
+            + (
+                "New retrieval is allowed. "
+                if retrieval
+                else "Do not search or read pages for this request. "
             )
-        prompt = ChatMessage.from_system(
-            system
-            + "\n"
-            + _state(s)
-            + f"\nThe decision model selected {action} for THIS step. "
-            + instruction
+            + (
+                f"Complete the pending {pending} step before further research or an answer. "
+                if pending
+                else ""
+            )
+            + (
+                "Use an available tool now; a text-only plan is not enough. "
+                if must_work
+                else ""
+            )
+            + (
+                "No tools remain for this step. Give an honest final answer using the current state. "
+                if not available
+                else ""
+            )
         )
-        selection = (
-            _force(action)
-            if action != "answer"
-            else {"generation_kwargs": {"tool_choice": "none"}}
-        )
-        step_tools = _step_tools(tools, action, s)
-        if step_tools is not None:
-            selection["tools"] = step_tools
+        prompt = ChatMessage.from_system(system + "\n" + _state(s) + "\n" + instruction)
         generation_messages = [prompt, *s.messages]
         attempts = max(1, cfg["llm"].get("json_attempts", 2))
-        reconsider = False
         for attempt in range(1, attempts + 1):
             watch()
-            raw_reply = run_logged(llm, messages=generation_messages, **selection)[
-                "replies"
-            ][0]
+            output = run_logged(
+                llm,
+                messages=generation_messages,
+                tools=available,
+                generation_kwargs={"tool_choice": tool_choice},
+                purpose="agent_step",
+            )
             watch()
-            cut_off = raw_reply.meta.get("finish_reason") == "length"
-            if cut_off and nudges >= NUDGES:
-                raise ValueError(
-                    "Apertus repeatedly exceeded the output limit. "
-                    "No partial tool call was executed; ask for fewer items per step."
-                )
-            if cut_off and nudges < NUDGES:
-                reply = ChatMessage.from_assistant(
-                    text="Previous output was cut off before completion.",
-                    meta=raw_reply.meta,
-                )
-                reasoning = ""
-                break
+            raw = output["replies"][0]
             try:
-                reply, reasoning = _clean(raw_reply)
-                if action == "answer" and not reply.tool_calls:
+                if raw.meta.get("finish_reason") == "length":
+                    raise ValueError(CUT_OFF)
+                reply, reasoning = _clean(raw)
+                if not reply.tool_calls:
                     reply = _plain_answer(reply)
-                if (
-                    action == "answer"
-                    and reply.tool_calls
-                    and tools
-                    and not answer_reconsidered
-                ):
-                    answer_reconsidered = reconsider = True
-                    blocked_actions.add("answer")
-                    generation_feedback = (
-                        "The attempted final answer contained tool calls instead of a completed answer. "
-                        "Choose an eligible action to make progress on the request."
+                    if must_work:
+                        raise ValueError(
+                            "Use one available tool to complete the pending work; do not stop with a plan."
+                        )
+                    if not (reply.text or "").strip():
+                        raise ValueError(
+                            "Return a nonempty answer or one available tool call."
+                        )
+                else:
+                    if len(reply.tool_calls) != 1:
+                        raise ValueError("Generate exactly one tool call per step.")
+                    call = reply.tool_calls[0]
+                    if call.tool_name not in names:
+                        raise ValueError(
+                            f"Tool {call.tool_name} is not available. Available tools: {sorted(names)}"
+                        )
+                    selected = next(t for t in available if t.name == call.tool_name)
+                    errors = list(
+                        Draft202012Validator(selected.parameters).iter_errors(
+                            call.arguments
+                        )
                     )
-                    record(
-                        "decision_reconsidered",
-                        rejected_action="answer",
-                        reason=generation_feedback,
-                        reply=raw_reply.to_dict(),
-                    )
-                    yield emit(
-                        {
-                            "type": "note",
-                            "text": "The response requested more work; reconsidering the next action.",
-                        }
-                    )
-                    break
-                if not cut_off:
-                    validate_generation(action, list(reply.tool_calls))
-                    for call in reply.tool_calls:
-                        _validate_item_call(call, s, max_items)
-                    if action == "read_pages":
-                        pages = reply.tool_calls[0].arguments.get("pages", [])
-                        if (
-                            not isinstance(pages, list)
-                            or not pages
-                            or not all(
-                                type(n) is int
-                                and 1 <= n <= len(s.pages)
-                                and n not in s.read
-                                for n in pages
-                            )
-                        ):
-                            raise ValueError(
-                                "read_pages must contain only existing unread pages; "
-                                f"unread pages: {decision_state['unread_page_numbers']}"
-                            )
+                    if errors:
+                        raise ValueError(errors[0].message[:400])
+                    _validate_item_call(call, s, max_items)
                 break
             except ValueError as error:
                 record(
                     "generation_rejected",
-                    action=action,
                     attempt=attempt,
                     error=str(error),
-                    reply=raw_reply.to_dict(),
+                    reply=raw.to_dict(),
                 )
                 if attempt == attempts:
                     raise ValueError(
-                        f"Apertus did not follow the selected {action} action: {error}"
+                        f"Apertus returned invalid agent output: {error}"
                     ) from error
                 generation_messages.append(
                     ChatMessage.from_user(
-                        f"Your previous output was invalid for the selected action {action}: {error}. "
-                        f"{instruction}\nPrevious output: {raw_reply.text or '[incompatible tool call]'}"
+                        f"Your previous output was invalid: {error}. {instruction}\nPrevious output: {raw.text or '[invalid tool call]'}"
                     )
                 )
                 yield emit(
                     {
                         "type": "note",
-                        "text": "Repairing slide data before adding it."
-                        if action == "add_items"
-                        else "Apertus returned invalid output; retrying the selected action.",
+                        "text": "Apertus returned invalid output; retrying the current step.",
                     }
                 )
-        if reconsider:
-            continue
-        record(
-            "chat_parsed", reply=reply.to_dict(), reasoning=reasoning, cut_off=cut_off
-        )
-        if reasoning and action != "answer":
-            yield emit({"type": "assistant", "text": reasoning, "final": False})
-        if (
-            cut_off and nudges < NUDGES
-        ):  # a half-written tool call or text: tell it and let it continue
-            nudges += 1
+        if output.get("routing"):
             yield emit(
                 {
                     "type": "note",
-                    "text": "Apertus' answer was too long and was cut off; it continues in smaller steps.",
+                    "text": f"Generation model selected: {output['routing']['model']}.",
+                    "routing": output["routing"],
                 }
             )
-            s.messages.append(
-                ChatMessage.from_assistant(
-                    text=(reply.text or "")[:2000] or None, meta=reply.meta
-                )
-            )
-            s.messages.append(ChatMessage.from_user(CUT_OFF))
-            continue
-        validate_generation(action, list(reply.tool_calls))
+        record("chat_parsed", reply=reply.to_dict(), reasoning=reasoning)
         s.messages.append(reply)
         if not reply.tool_calls:
-            yield emit(
-                {"type": "assistant", "text": (reply.text or "").strip(), "final": True}
-            )
+            yield emit({"type": "assistant", "text": reply.text.strip(), "final": True})
             answered = True
             break
-        if reply.text and reply.text.strip():
-            yield emit(
-                {"type": "assistant", "text": reply.text.strip(), "final": False}
+        # Tool-call prose often contains leaked planning; tool events convey the operation to the UI.
+        call = reply.tool_calls[0]
+        watch()
+        key = _call_key(call)
+        repeated = key in done_calls
+        record(
+            "tool_call",
+            tool_call_id=call.id,
+            name=call.tool_name,
+            arguments=call.arguments,
+            repeated=repeated,
+        )
+        yield emit(
+            {
+                "type": "tool_call",
+                "id": call.id,
+                "name": call.tool_name,
+                "arguments": call.arguments
+                if call.tool_name != "add_items"
+                else {"items": len(call.arguments.get("items") or [])},
+                "repeated": repeated,
+            }
+        )
+        watch()
+        if repeated:
+            blocked.add(call.tool_name)
+            result, info, error = (
+                "You already made exactly this call; its result is above. Choose another available operation or answer.",
+                {},
+                False,
             )
-        for call in reply.tool_calls:
-            watch()
-            key = _call_key(call)
             record(
-                "tool_call",
-                tool_call_id=call.id,
-                name=call.tool_name,
-                arguments=call.arguments,
-                repeated=key in done_calls,
+                "action_blocked",
+                action=call.tool_name,
+                reason="Identical successful call repeated",
             )
-            if key in done_calls:
-                blocked_actions.add(call.tool_name)
-                record(
-                    "action_blocked",
-                    action=call.tool_name,
-                    reason="Identical successful call repeated; exclude this action for the rest of this turn.",
-                )
-                repeated = "You already made exactly this call; its result is above. Continue with the next step."
-                record(
-                    "tool_response",
-                    tool_call_id=call.id,
-                    name=call.tool_name,
-                    text=repeated,
-                    skipped=True,
-                    error=False,
-                )
-                s.messages.append(
-                    ChatMessage.from_tool(
-                        repeated,
-                        origin=call,
-                    )
-                )
-                yield emit(
-                    {
-                        "type": "tool_call",
-                        "id": call.id,
-                        "name": call.tool_name,
-                        "repeated": True,
-                        "arguments": {}
-                        if call.tool_name == "add_items"
-                        else call.arguments,
-                    }
-                )
-                continue
-            yield emit(
-                {
-                    "type": "tool_call",
-                    "id": call.id,
-                    "name": call.tool_name,
-                    "arguments": call.arguments
-                    if call.tool_name != "add_items"
-                    else {"items": len(call.arguments.get("items") or [])},
-                }
-            )
-            watch()
+        else:
             before_read = len(s.read)
             try:
                 result, info = _run_tool(
                     s, searcher, call.tool_name, call.arguments, max_items
                 )
                 error = False
-            except Exception as e:  # the agent sees the error and can react to it
-                result, info, error = f"Error: {e}", {}, True
+            except Stopped:
+                raise
+            except Exception as error_value:
+                result, info, error = f"Error: {error_value}", {}, True
                 record(
                     "tool_error",
                     tool_call_id=call.id,
                     name=call.tool_name,
-                    error_type=type(e).__name__,
-                    error=str(e),
+                    error_type=type(error_value).__name__,
+                    error=str(error_value),
                     traceback=traceback.format_exc(),
                 )
             if not error:
                 done_calls.add(key)
-                turn_has_work = True
+                worked = True
+                if call.tool_name in ("search", "read_pages"):
+                    retrieval_started = True
                 if call.tool_name == "search" and len(s.pages) > len(s.read):
-                    pending, research_in_progress = "read_pages", True
+                    pending = "read_pages"
                 elif call.tool_name == "read_pages" and len(s.read) > before_read:
-                    pending, research_in_progress = "add_items", True
+                    pending = "add_items"
                 elif call.tool_name == "add_items":
-                    pending, research_in_progress = None, False
-            record(
-                "tool_response",
-                tool_call_id=call.id,
-                name=call.tool_name,
-                text=result,
-                info=info,
-                error=error,
-                pages=s.pages,
-                read_pages=sorted(s.read),
-                items=s.items,
-            )
-            s.messages.append(ChatMessage.from_tool(result, origin=call, error=error))
-            yield emit(
-                {
-                    "type": "tool_result",
-                    "id": call.id,
-                    "name": call.tool_name,
-                    "error": error,
-                    "info": info,
-                    "text": result if error or call.tool_name in CHANGES else "",
-                }
-            )
-            if call.tool_name in CHANGES and not error:
-                yield {"type": "items", "items": s.items, "dropped": s.dropped}
-                yield {"type": "deck", "deck": s.deck}
+                    pending = None
+        record(
+            "tool_response",
+            tool_call_id=call.id,
+            name=call.tool_name,
+            text=result,
+            info=info,
+            error=error,
+            skipped=repeated,
+            pages=s.pages,
+            read_pages=sorted(s.read),
+            items=s.items,
+        )
+        s.messages.append(ChatMessage.from_tool(result, origin=call, error=error))
+        yield emit(
+            {
+                "type": "tool_result",
+                "id": call.id,
+                "name": call.tool_name,
+                "error": error,
+                "info": info,
+                "text": result if error or call.tool_name in CHANGES else "",
+            }
+        )
+        if call.tool_name in CHANGES and not error and not repeated:
+            yield {"type": "items", "items": s.items, "dropped": s.dropped}
+            yield {"type": "deck", "deck": s.deck}
     if not answered:
         yield emit(
             {

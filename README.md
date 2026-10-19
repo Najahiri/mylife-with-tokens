@@ -1,8 +1,8 @@
 # RAGlette
 
 Built at Hack Apertus for the challenge "Research & Expertise Navigator" (Bern Economic Development Agency).
-You chat with an agent using instruction-tuned Apertus 1.5 8B for generation and our fine-tuned decision model
-for action selection and ranking, about a company described by its sales-pitch buzzwords. The agent searches
+You chat with an agent using instruction-tuned Apertus 1.5 8B and 70B, with our fine-tuned decision model
+choosing which model handles each LLM call, about a company described by its sales-pitch buzzwords. The agent searches
 the indexed websites of Bern's research institutions, reads the matching pages in full and builds a presentation in
 the Kanton Bern design, one slide per partner. Every slide is backed by a quote that is checked against its source page.
 
@@ -54,7 +54,7 @@ cd frontend && npm install && npm run build && cd ..
 uv run uvicorn api.main:app --port 8000     # http://localhost:8000
 ```
 
-Then configure both the chat API (base URL, key, models) and decision API (URL, key, model)
+Then configure the chat API (base URL, key, 8B and 70B models) and decision API (URL, key, model)
 under Settings in the UI. Both are required for the agent.
 Stock 8B/70B generation uses CSCS through `https://gateway.keera.ch/api/v1`;
 only the fine-tuned decision model needs our own HF endpoint for those options.
@@ -75,47 +75,42 @@ recent conversation's log from the project directory:
 tail -f "$(ls -t data/logs/pipeline/*.log | head -1)"
 ```
 
-Logs include the exact decision request (state, question, ordered options), the
-returned model/revision and probabilities, action-to-probability pairs, full chat
-prompts and raw replies (including tool arguments and usage metadata), retrieval
-ranking, and complete tool results, including page texts. Requests and results are
-written immediately, so a failed or unfinished turn still has a trace. Entries
-have session, turn, step and call IDs; repeated calls and errors are recorded too.
-Credentials are redacted. The files stay in the gitignored `data/` directory.
+Every user turn starts with an LLM assessment of whether new source retrieval is needed. Greetings,
+clarifications, general explanations, presentation edits, and answers supported by the existing conversation
+can skip retrieval. The agent LLM chooses its own tools; the decision model no longer selects actions or
+reranks search results.
 
-For repeated `search` decisions, compare `decision_request.request.state`
-(especially `unfinished_step` and `recent_messages`) with `action_selected` and
-its `action_probabilities`. Decision context includes 400 request characters,
-page/read/item counts, unread/read page numbers, page titles, existing item titles,
-and bounded excerpts from the last three messages with roles, tool names and
-results. Unfinished reading/composition is carried into a follow-up turn. Chat
-context is logged separately in `chat_request` and contains the full conversation
-and presentation.
+Before every pipeline LLM call, including retrieval assessment, agent steps, repairs, query generation,
+slide composition and fact checking, the decision service selects the 8B or 70B instruction model.
+Both run through the configured chat gateway (normally Keera). Configure their IDs with Settings or
+`APERTUS_MODEL_8B` / `APERTUS_MODEL_70B` (defaults `apertus-v1-5-8b` / `apertus-v1-5-70b`).
+The router sees the call's purpose, bounded prompt excerpts, context size, and available tools. Its current
+checkpoint is reused for this new task; model-routing quality should be evaluated separately from API correctness.
 
-The backend recovers native calls and complete Apertus/OpenAI tool-call JSON,
-including fenced JSON and a tool-call suffix after prose. It checks every call
-against the decision-selected action and retries incompatible chat output up to
-`llm.json_attempts` times. If an attempted answer contains calls, the decision
-model gets one reconsideration with `answer` excluded; chat's proposed call is
-never executed unless the decision model selects that action. Further formatting
-errors are retried. Logs include `generation_rejected` and `decision_reconsidered`.
+Logs include the exact decision request, ordered model options and probabilities (`model_selected`),
+retrieval assessment (`retrieval_assessed`), actual generation model, full prompts and raw replies,
+and complete tool results including page texts. Each request and result is written immediately with session,
+turn, step and call IDs. Credentials are redacted. Logs stay in the gitignored `data/` directory.
 
-`read_pages` is available only while unread pages exist. Research started during
-a turn must proceed to reading and an `add_items` attempt before answering or
-searching again. After one successful reading batch, further reading is excluded
-until composition has been attempted, even if more results remain unread. The
-last two steps reserve composition of pending research and a final summary.
-Chat receives only the selected tool, with current unread page numbers in the
-reading schema and read-page citations in the item schema. Identical successful
-calls are skipped once and their action is
-then excluded for the rest of that turn (`action_blocked` in logs). Failed calls
-remain retryable. `action_options` records the eligible actions before each
-decision, so probabilities can be interpreted against the actual option set.
+The backend recovers native calls and complete Apertus/OpenAI tool-call JSON, including fenced JSON and
+a call suffix after prose. Calls must use an available tool with valid arguments; malformed output is repaired
+up to `llm.json_attempts` times. Each repair gets a fresh model-routing decision.
+
+`read_pages` is available only for unread pages and only when the initial assessment allows retrieval.
+After a successful reading batch, further research waits for an `add_items` attempt. The last steps reserve
+composition and a final summary. Identical successful calls are skipped and their tool is excluded for the
+rest of the turn. Failed calls remain retryable. No-retrieval turns can still edit, remove or restore slides.
 
 Slides use checked items, not search passages: the agent must read retrieved pages
 and call `add_items` before the slide preview and PDF have content. Search
 passages are hypothetical queries and do not establish facts about institutions
 or people. Only items accepted by the evidence checks reach the presentation.
+
+Facts are verified by a separate LLM call, independently routed to 8B or 70B, with only the
+item's cited page texts as evidence. Supported paraphrases are kept; unsupported facts are removed with
+the checker's reason. Evidence quotations still require a source-text match. Fact-check prompts, replies
+and verdicts appear in the local pipeline logs. Invalid checker output is retried up to `llm.json_attempts`;
+if verification fails, the item is not added. Existing saved slides keep their original results until regenerated.
 
 Malformed tool-call JSON triggers regeneration instead of becoming an answer in
 chat. `add_items` accepts at most five items per call; each item must match the

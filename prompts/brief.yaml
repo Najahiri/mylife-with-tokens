@@ -1,5 +1,5 @@
 # B4.3: Buzzwords + Seiten -> belegte Pitch-Informationen. Variablen: buzzwords, pages, language, max_items
-version: 7
+version: 8
 system: |
   You support the economic development agency of the canton of Bern. A company described by the
   buzzwords below is considering setting up business in Bern and needs connections.
@@ -22,8 +22,10 @@ system: |
   - "organisation": the institution and unit it belongs to, as named on the page (e.g. "ARTORG Center,
     University of Bern").
   - "summary": one or two sentences, what it is. "relevance": one sentence, why it matters for this company.
-  - "facts": up to three short phrases copied word for word from a cited page that show what it offers
-    (e.g. "closed-loop insulin delivery", "clinical studies with 200 patients"). They are checked like the quote.
+  - "facts": up to three short factual phrases supported by a cited page that show what it offers
+    (e.g. "closed-loop insulin delivery", "clinical studies with 200 patients"). Faithful paraphrases are
+    allowed; an LLM checks their meaning against the cited sources. Preserve numbers, units,
+    qualifications and scope. Do not invent or exaggerate.
   - "contacts" lists only persons who are named on the cited pages, with their role, email address
     and phone number if they are stated there. Copy email and phone exactly as written on the page.
     Leave a field out if the page does not state it. Leave the list empty if no person is named.

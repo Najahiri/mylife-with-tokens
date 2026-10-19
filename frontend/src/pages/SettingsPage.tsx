@@ -56,7 +56,8 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   const qc = useQueryClient();
   const [baseUrl, setBaseUrl] = useState(llm.base_url ?? "");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState(llm.model_agent ?? "");
+  const [smallModel, setSmallModel] = useState(llm.model_8b ?? "apertus-v1-5-8b");
+  const [largeModel, setLargeModel] = useState(llm.model_70b ?? "apertus-v1-5-70b");
   const [decisionUrl, setDecisionUrl] = useState(llm.decision_url ?? "");
   const [decisionKey, setDecisionKey] = useState("");
   const [decisionModel, setDecisionModel] = useState(llm.decision_model ?? "");
@@ -64,7 +65,7 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   const models = useQuery({ queryKey: ["models"], queryFn: api.models, enabled: llm.key_set });
   const save = useMutation({
     mutationFn: () => api.saveSettings({
-      base_url: baseUrl, api_key: apiKey || undefined, model_agent: model,
+      base_url: baseUrl, api_key: apiKey || undefined, model_8b: smallModel, model_70b: largeModel,
       decision_url: decisionUrl, decision_api_key: decisionKey || undefined, decision_model: decisionModel,
     }),
     onSuccess: () => {
@@ -77,10 +78,12 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   });
   const test = useMutation({ mutationFn: api.test });
   const options = models.data?.models ?? [];
+  const smallOptions = options.filter((m) => /8b/i.test(m) && !/thinking/i.test(m));
+  const largeOptions = options.filter((m) => /70b/i.test(m) && !/thinking/i.test(m));
 
   return (
     <SettingsCard id="api" title="Apertus access"
-                  intro="Chat generates tool arguments and answers; the fine-tuned decision model selects actions and ranks results. Keys stay in the backend and are never sent back to the browser.">
+                  intro="The decision model selects 8B or 70B for each LLM call. The LLM assesses retrieval needs, chooses tools, checks facts and writes answers. Keys stay in the backend.">
       <form className="flex flex-col gap-6" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
           <SettingsField label="Chat API base URL">
@@ -92,14 +95,24 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
                    autoComplete="off"
                    placeholder={llm.key_set ? `set (…${llm.key_last4}), leave empty to keep it` : "Enter key"} />
           </SettingsField>
-          <SettingsField label="Generation model" hint="Writes tool arguments, slide content and answers. Choose a model with tool-call support.">
-            {options.length ? (
-              <select value={model} onChange={(e) => setModel(e.target.value)} className={settingsInput}>
-                {!options.includes(model) && <option value={model}>{model || "– choose –"}</option>}
-                {options.map((m) => <option key={m} value={m}>{m}</option>)}
+          <SettingsField label="8B generation model" hint="The router's faster option. Use the instruction-tuned model with tool-call support.">
+            {smallOptions.length ? (
+              <select value={smallModel} onChange={(e) => setSmallModel(e.target.value)} className={settingsInput}>
+                {!smallOptions.includes(smallModel) && <option value={smallModel}>{smallModel || "– choose –"}</option>}
+                {smallOptions.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             ) : (
-              <input value={model} onChange={(e) => setModel(e.target.value)} className={settingsInput} />
+              <input value={smallModel} onChange={(e) => setSmallModel(e.target.value)} className={settingsInput} />
+            )}
+          </SettingsField>
+          <SettingsField label="70B generation model" hint="The router's stronger option for difficult reasoning and synthesis. Use the instruction-tuned model with tool-call support.">
+            {largeOptions.length ? (
+              <select value={largeModel} onChange={(e) => setLargeModel(e.target.value)} className={settingsInput}>
+                {!largeOptions.includes(largeModel) && <option value={largeModel}>{largeModel || "– choose –"}</option>}
+                {largeOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            ) : (
+              <input value={largeModel} onChange={(e) => setLargeModel(e.target.value)} className={settingsInput} />
             )}
           </SettingsField>
           <SettingsField label="Decision service URL" hint="Your fine-tuned model's endpoint root or /decide URL.">
@@ -111,7 +124,7 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
                    autoComplete="off"
                    placeholder={llm.decision_key_set ? `set (…${llm.decision_key_last4}), leave empty to keep it` : "Enter decision service key"} />
           </SettingsField>
-          <SettingsField label="Decision model" hint="Optional model identifier; leave empty to use the model served by your endpoint.">
+          <SettingsField label="Decision model" hint="Selects which generation model handles each call. Leave empty to use the model served by your endpoint.">
             <input value={decisionModel} onChange={(e) => setDecisionModel(e.target.value)} className={settingsInput} />
           </SettingsField>
         </div>

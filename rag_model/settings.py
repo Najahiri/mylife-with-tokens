@@ -16,6 +16,7 @@ from rag_model.llm import (
     load_settings,
     public_settings,
     save_settings,
+    run_logged,
 )
 from rag_model import config
 
@@ -38,8 +39,10 @@ def test_connection(verbose: bool = True, roles=ROLES) -> list[dict]:
     for role in roles:
         t0 = time.time()
         try:
-            reply = generator(role, config.load()["llm"]).run(
-                messages=[ChatMessage.from_user("Reply with: ok")]
+            reply = run_logged(
+                generator(role, config.load()["llm"]),
+                messages=[ChatMessage.from_user("Reply with: ok")],
+                purpose="connection_test",
             )
             results.append(
                 {
@@ -104,19 +107,25 @@ def main():
             "base_url": ask(
                 "API base URL (OpenAI-compatible, usually ends with /v1)", "base_url"
             ),
-            "model_queries": ask("Model for search terms (B2)", "model_queries"),
-            "model_brief": ask("Model for the pitch information (B4)", "model_brief"),
+            "model_8b": ask("8B instruction model for routing", "model_8b"),
+            "model_70b": ask("70B instruction model for routing", "model_70b"),
+            "decision_url": ask("Decision service URL", "decision_url"),
         }
         key = getpass.getpass("API key (hidden, Enter keeps the current one): ").strip()
         if key:
             update["api_key"] = key
+        decision_key = getpass.getpass(
+            "Decision API key (hidden, Enter keeps the current one): "
+        ).strip()
+        if decision_key:
+            update["decision_api_key"] = decision_key
         save_settings(update)
         print("saved to data/settings.json")
         try:
             print("models offered by the API:\n  " + "\n  ".join(list_models()))
         except Exception as e:
             print(f"could not list models: {e}")
-        if update["model_queries"] and update["model_brief"]:
+        if update["model_8b"] and update["model_70b"]:
             print("testing connection …")
             test_connection()
         else:

@@ -102,6 +102,8 @@ export interface BriefResult {
 export interface LlmSettings {
   base_url?: string;
   model_agent?: string;
+  model_8b?: string;
+  model_70b?: string;
   key_set: boolean;
   key_last4: string;
   decision_url?: string;

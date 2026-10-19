@@ -2,7 +2,8 @@
 
 Settings live in data/settings.json (never committed, never sent to the browser).
 Environment variables override them: APERTUS_BASE_URL, APERTUS_API_KEY, APERTUS_MODEL_QUERIES, APERTUS_MODEL_BRIEF,
-APERTUS_MODEL_AGENT.
+APERTUS_MODEL_AGENT (legacy role defaults). Every pipeline call is routed independently
+between APERTUS_MODEL_8B and APERTUS_MODEL_70B by the decision service.
 Decision scoring uses APERTUS_DECISION_URL, APERTUS_DECISION_API_KEY and
 APERTUS_DECISION_MODEL, independently of the chat provider.
 """
@@ -26,6 +27,7 @@ SETTINGS_FILE = ROOT / "data" / "settings.json"
 ROLES = ("queries", "brief", "agent")  # B2, B4 and the orchestrator; one model per role
 KEERA_BASE_URL = "https://gateway.keera.ch/api/v1"
 CHAT_MODEL = "apertus-v1-5-8b"
+LARGE_CHAT_MODEL = "apertus-v1-5-70b"
 
 
 def normalize_decision_url(value: str) -> str:
@@ -45,6 +47,8 @@ def load_settings() -> dict:
         "model_brief": "APERTUS_MODEL_BRIEF",
         "model_agent": "APERTUS_MODEL_AGENT",
         "chat_model": "APERTUS_CHAT_MODEL",
+        "model_8b": "APERTUS_MODEL_8B",
+        "model_70b": "APERTUS_MODEL_70B",
         "decision_url": "APERTUS_DECISION_URL",
         "decision_api_key": "APERTUS_DECISION_API_KEY",
         "decision_model": "APERTUS_DECISION_MODEL",
@@ -53,6 +57,8 @@ def load_settings() -> dict:
         if os.environ.get(var):
             s[key] = os.environ[var]
     s.setdefault("base_url", KEERA_BASE_URL)
+    s["model_8b"] = s.get("model_8b") or CHAT_MODEL
+    s["model_70b"] = s.get("model_70b") or LARGE_CHAT_MODEL
     if (
         s["base_url"].rstrip("/") == KEERA_BASE_URL
         and not os.environ.get("APERTUS_API_KEY")
@@ -66,7 +72,12 @@ def load_settings() -> dict:
             "swiss-ai/Apertus-v1.5-8B": "apertus-v1-5-8b",
             "swiss-ai/Apertus-v1.5-70B": "apertus-v1-5-70b",
         }
-        for key in ("chat_model", *(f"model_{role}" for role in ROLES)):
+        for key in (
+            "chat_model",
+            "model_8b",
+            "model_70b",
+            *(f"model_{role}" for role in ROLES),
+        ):
             if key in s:
                 s[key] = aliases.get(s[key], s[key])
     if s.get("decision_url"):
@@ -125,7 +136,7 @@ def generator(
         kwargs["max_tokens"] = llm_cfg["max_tokens"]
     fmt = llm_cfg.get("response_format")
     if tools:
-        pass  # tool_choice "auto": with "required" Apertus can no longer plan in text and repeats its calls
+        pass  # the agent sets auto/required/none per step using the current tool availability
     elif fmt == "json_schema" and schema:
         kwargs["response_format"] = {
             "type": "json_schema",
@@ -135,7 +146,7 @@ def generator(
         kwargs["response_format"] = {"type": "json_object"}
     # Streaming keeps data flowing while the model writes, so gateways with short timeouts do not cut long answers.
     stream = (on_chunk or (lambda chunk: None)) if llm_cfg.get("stream", True) else None
-    return OpenAIChatGenerator(
+    llm = OpenAIChatGenerator(
         api_key=Secret.from_token(s["api_key"]),
         model=s[f"model_{role}"],
         api_base_url=s["base_url"],
@@ -145,14 +156,38 @@ def generator(
         timeout=llm_cfg.get("timeout", 300),
         max_retries=llm_cfg.get("max_retries", 2),
     )
+    llm._apertus_role = role
+    return llm
 
 
-def run_logged(llm, *, messages, **kwargs):
-    """Record complete model-visible messages and raw replies before output cleanup."""
+def run_logged(llm, *, messages, purpose: str | None = None, **kwargs):
+    """Route each pipeline call, then log its actual model, request and reply.
+
+    A per-request model override avoids mutating a component shared by concurrent calls.
+    """
     tools = kwargs.get("tools", getattr(llm, "tools", None)) or []
+    routing = None
+    role = getattr(llm, "_apertus_role", None)
+    if role in ROLES:
+        from rag_model.policy import select_model
+
+        routing = select_model(
+            messages,
+            tools,
+            purpose=purpose or role,
+            generation_kwargs={
+                **getattr(llm, "generation_kwargs", {}),
+                **kwargs.get("generation_kwargs", {}),
+            },
+        )
+        kwargs["generation_kwargs"] = {
+            **kwargs.get("generation_kwargs", {}),
+            "model": routing["model"],
+        }
     with model_call(
         "chat",
-        model=getattr(llm, "model", None),
+        model=routing["model"] if routing else getattr(llm, "model", None),
+        purpose=purpose or role,
         endpoint=getattr(llm, "api_base_url", None),
         messages=[message.to_dict() for message in messages],
         tools=[
@@ -170,6 +205,8 @@ def run_logged(llm, *, messages, **kwargs):
     ) as log_response:
         output = llm.run(messages=messages, **kwargs)
         log_response(output=output)
+        if routing:
+            output = {**output, "routing": routing}
         return output
 
 

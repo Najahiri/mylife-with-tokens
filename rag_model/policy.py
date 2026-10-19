@@ -1,127 +1,75 @@
-"""Decision-model policy; chat is responsible only for arguments and answers."""
+"""The decision model chooses generation capacity, never the agent's tool or action."""
 
 from rag_model.decision import decide
+from rag_model.llm import load_settings
 from rag_model.pipeline_log import record
 
 
-def select_action(state: dict, tools: list) -> dict:
-    names, options = [], []
-    blocked = set(state.get("blocked_actions", []))
-    unread = max(0, state["pages"] - state["read_pages"])
-    pending = state.get("unfinished_step")
-    must_finish = state.get("research_in_progress", False) and (
-        (pending == "read_pages" and unread > 0 and "read_pages" not in blocked)
-        or (
-            pending == "add_items"
-            and state["read_pages"] > 0
-            and "add_items" not in blocked
+def select_model(messages, tools, *, purpose: str, generation_kwargs: dict) -> dict:
+    settings = load_settings()
+    models = [settings["model_8b"], settings["model_70b"]]
+    if models[0] == models[1]:
+        raise ValueError("Configure distinct 8B and 70B generation models")
+    recent = []
+    for message in messages[-3:]:
+        role = getattr(message, "role", None)
+        recent.append(
+            {
+                "role": getattr(role, "value", role),
+                "text": (message.text or "")[:220],
+                "tools": [c.tool_name for c in message.tool_calls],
+            }
         )
+    system = next(
+        (
+            m.text or ""
+            for m in messages
+            if getattr(getattr(m, "role", None), "value", None) == "system"
+        ),
+        "",
     )
-    remaining = state.get("remaining_steps")
-    reserved = None
-    if remaining == 1 and state.get("turn_has_work", False):
-        reserved = "answer"
-        must_finish = False
-    elif (
-        remaining == 2
-        and must_finish
-        and state["read_pages"] > 0
-        and "add_items" not in blocked
-    ):
-        reserved = "add_items"
-    for tool in tools:
-        name = tool.name
-        if reserved is not None and name != reserved:
-            continue
-        if name in blocked:
-            continue
-        if name == "search" and must_finish:
-            continue
-        if name == "read_pages" and (
-            not unread or (must_finish and pending == "add_items")
-        ):
-            continue
-        if name == "add_items" and not state["read_pages"]:
-            continue
-        if name in ("remove_items", "edit_item") and not state["items"]:
-            continue
-        if name == "restore_items" and not state.get("trashed_items", 0):
-            continue
-        names.append(name)
-        options.append(f"{name}: {tool.description[:180]}")
-    if (
-        reserved == "answer"
-        or (reserved is None and not must_finish and "answer" not in blocked)
-        or not names
-    ):
-        names.append("answer")
-        options.append(
-            "answer: Finish this turn with a user-facing response using the available evidence."
-        )
-    record(
-        "action_options",
-        actions=names,
-        blocked_actions=sorted(blocked),
-        research_in_progress=state.get("research_in_progress", False),
-        unfinished_step=pending,
-        remaining_steps=remaining,
-        reserved_action=reserved,
+    latest_user = next(
+        (
+            m.text or ""
+            for m in reversed(messages)
+            if getattr(getattr(m, "role", None), "value", None) == "user"
+        ),
+        "",
     )
-    result = decide(
-        state,
-        "Choose the single best next action to fulfil the user's request. "
-        "For research and slides: search, read relevant pages, add checked items, then answer. "
-        "Search results alone do not create slides. Complete unfinished work rather than "
-        "repeating the same search; for editing requests, choose the requested edit.",
-        options,
-    )
-    return {**result, "action": names[result["prediction_index"]], "actions": names}
-
-
-def validate_generation(action: str, calls: list) -> None:
-    """Never execute a chat-selected action different from the decision result."""
-    if action == "answer":
-        if calls:
-            raise ValueError(
-                "Chat returned tool calls when the decision model selected an answer"
-            )
-    elif len(calls) != 1 or calls[0].tool_name != action:
-        raise ValueError(
-            f"Chat must generate exactly one {action} call selected by the decision model"
-        )
-
-
-def rank_candidates(
-    state: dict, candidates: list[dict], limit: int = 8
-) -> tuple[list[int], dict | None]:
-    """Rank a retrieval shortlist in one decision call; retain remaining retrieval order."""
-    count = min(len(candidates), limit)
-    if count < 2:
-        return list(range(len(candidates))), None
-    options = [
-        f"{index + 1}. {page['title'][:40]} | {page['website'][:20]} | {page['snippet'][:60]}"
-        for index, page in enumerate(candidates[:count])
-    ]
-    result = decide(
-        state,
-        "Which research candidate is most relevant to the user's request?",
-        options,
-    )
-    ordered = sorted(range(count), key=lambda index: -result["probabilities"][index])
-    record(
-        "retrieval_ranking",
-        state=state,
-        candidates=candidates,
-        ranked_candidates=count,
-        order=ordered + list(range(count, len(candidates))),
-        decision=result,
-    )
-    return ordered + list(range(count, len(candidates))), {
-        **result,
-        "ranked_candidates": count,
-        "order": ordered,
-        "candidate_ids": [
-            page.get("page_id", str(index))
-            for index, page in enumerate(candidates[:count])
-        ],
+    state = {
+        "purpose": purpose,
+        "instructions": system[:350],
+        "latest_request": latest_user[:350],
+        "message_count": len(messages),
+        "context_characters": sum(len(m.text or "") for m in messages),
+        "recent_messages": recent,
+        "available_tools": [t.name for t in tools],
+        "structured_output": bool(generation_kwargs.get("response_format")),
+        "tool_choice": generation_kwargs.get("tool_choice", "auto"),
     }
+    result = decide(
+        state,
+        "Which instruction-tuned Apertus model should handle THIS LLM call? Select 8B for simple, "
+        "routine work and 70B when reasoning difficulty, ambiguity, long context, or correctness needs "
+        "justify its higher latency and compute. Choose the model, not a tool or retrieval action.",
+        [
+            f"{models[0]}: 8B, fast and economical; simple conversation, straightforward edits and extraction.",
+            f"{models[1]}: 70B, stronger reasoning; difficult source verification, multi-source synthesis and complex instructions.",
+        ],
+    )
+    choice = {
+        **result,
+        "decision_model": result.get("model"),
+        "model": models[result["prediction_index"]],
+        "models": models,
+        "purpose": purpose,
+    }
+    record(
+        "model_selected",
+        **choice,
+        model_probabilities=[
+            {"model": model, "probability": p}
+            for model, p in zip(models, result["probabilities"])
+        ],
+    )
+    return choice

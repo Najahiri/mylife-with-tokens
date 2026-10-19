@@ -57,6 +57,8 @@ class SettingsIn(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model_agent: str | None = None
+    model_8b: str | None = None
+    model_70b: str | None = None
     model_queries: str | None = None
     model_brief: str | None = None
     decision_url: str | None = None
@@ -361,7 +363,8 @@ def health():
     with closing(sqlite3.connect(ROOT / "data" / "index.sqlite")) as db:
         pages, sites = db.execute("SELECT count(*), count(DISTINCT source) FROM pages").fetchone()
     s = public_settings()
-    llm_ready = bool(s.get("key_set") and s.get("model_agent"))
+    llm_ready = bool(s.get("key_set") and s.get("model_8b") and s.get("model_70b")
+                     and s["model_8b"] != s["model_70b"])
     decision_ready = bool(s.get("decision_url") and s.get("decision_key_set"))
     return {"status": "ok", "pages": pages, "websites": sites,
             "llm_configured": llm_ready, "decision_configured": decision_ready,

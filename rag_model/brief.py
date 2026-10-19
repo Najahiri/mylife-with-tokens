@@ -3,7 +3,7 @@
     B2   search terms: buzzwords directly, or translated by Apertus (model "queries")
     B3   search (rag_model/search.py)
     B4   full page texts, lost-in-the-middle order, Apertus (model "brief")
-    B5   checks: sources exist, evidence quote is on a cited page, key facts are on a cited page, contacts
+    B5   checks: sources exist, evidence quote is on a cited page, an LLM verifies key facts, contacts
          (name, email, phone) are on a cited page, summary is close to its evidence
     B6   result + trace (data/traces/*.json)
 
@@ -28,6 +28,7 @@ from haystack.dataclasses import ChatMessage
 from rapidfuzz import fuzz
 
 from rag_model.llm import generator, parse_json, run_logged
+from rag_model.fact_check import check_facts
 from rag_model import config
 from rag_model.search import ROOT, Page, Searcher
 
@@ -269,17 +270,31 @@ def check(
             else:
                 removed.append(c)
 
+        proposed = [
+            f.strip()
+            for f in item.get("facts") or []
+            if isinstance(f, str) and f.strip()
+        ]
+        verdicts = check_facts(
+            proposed,
+            [
+                {
+                    "number": s,
+                    "title": docs[s - 1].meta.get("title", ""),
+                    "url": docs[s - 1].meta.get("url", ""),
+                    "text": docs[s - 1].content or "",
+                }
+                for s in dict.fromkeys(srcs)
+            ],
+        )
         facts = []
-        for f in item.get("facts") or []:
-            if not isinstance(f, str) or not f.strip():
-                continue
-            if (
-                max(fuzz.partial_ratio(_norm(f), pages_norm[s - 1]) for s in srcs)
-                >= cfg["evidence_min_ratio"]
-            ):
-                facts.append(f.strip())
+        for fact, verdict in zip(proposed, verdicts):
+            if verdict["supported"]:
+                facts.append(fact)
             else:
-                flags.append(f"fact not found in the source, removed: «{f.strip()}»")
+                flags.append(
+                    f"fact not supported by cited sources, removed: «{fact}». {verdict['reason']}"
+                )
 
         sim = float(
             searcher.embed(item.get("summary", ""))
