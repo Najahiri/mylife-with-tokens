@@ -77,6 +77,31 @@ def select_training_device(gpu_id: int):
     return torch.device("cuda", gpu_id)
 
 
+def upload_epoch_checkpoint(cfg, model, tokenizer, epoch):
+    """Publish the selected epoch's weights before validation or further training."""
+    if epoch != cfg.hub_upload_epoch:
+        return
+    import torch
+    from huggingface_hub import HfApi
+
+    checkpoint_dir = os.path.join(cfg.output_dir, f"epoch-{epoch}")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    model.backbone.save_pretrained(checkpoint_dir)
+    tokenizer.save_pretrained(checkpoint_dir)
+    torch.save(model.pointer_head.state_dict(), os.path.join(checkpoint_dir, "head.pt"))
+    OmegaConf.save(cfg, os.path.join(checkpoint_dir, "training_config.yaml"))
+    destination = f"checkpoints/epoch-{epoch}"
+    print(f"Uploading epoch {epoch} checkpoint to {cfg.hub_model_id}/{destination}...", flush=True)
+    api = HfApi()
+    api.create_repo(repo_id=cfg.hub_model_id, exist_ok=True, repo_type="model")
+    api.upload_folder(
+        folder_path=checkpoint_dir, path_in_repo=destination,
+        repo_id=cfg.hub_model_id, repo_type="model",
+        commit_message=f"Save checkpoint after training epoch {epoch}",
+    )
+    print(f"Epoch {epoch} upload complete; continuing training.", flush=True)
+
+
 @hydra.main(version_base="1.3", config_path=".", config_name="config")
 def main(cfg: DictConfig) -> None:
     if cfg.dry_run:
@@ -267,6 +292,8 @@ def train(cfg: DictConfig) -> None:
                 })
 
             pbar.set_postfix({"loss": f"{(train_loss / (step + 1)):.4f}"})
+
+        upload_epoch_checkpoint(cfg, model, tokenizer, epoch + 1)
 
         # 5. Validation Loop
         model.eval()

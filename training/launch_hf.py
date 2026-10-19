@@ -13,7 +13,7 @@ from omegaconf import OmegaConf
 
 SOURCE_FILES = (
     "main.py", "model.py", "backbone.py", "dataset.py", "constants.py", "evaluation.py",
-    "requirements-hf.txt", "requirements-hf.lock", "run_hf_job.sh",
+    "requirements-hf.txt", "run_hf_job.sh",
 )
 
 
@@ -57,7 +57,6 @@ def main():
             parser.error("hf CLI not found. Install huggingface-hub and run hf auth login.")
             
         subprocess.run(command, check=True)
-
 
 if __name__ == "__main__":
     main()

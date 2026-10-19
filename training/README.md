@@ -35,7 +35,15 @@ python training/main.py --multirun hub_model_id=your-user/your-model \
 Training runs on the machine where this command executes. Running Python locally
 does not submit an HF Job. The base model is downloaded from the Hub, checkpoints
 are saved on the training machine, and the final checkpoint is uploaded to
-`hub_model_id` after training and evaluation.
+`hub_model_id` after training and evaluation. By default, `hub_upload_epoch: 1`
+also saves and uploads the first epoch immediately after its last training batch,
+before validation or epoch 2. Find it in the Hub repo under `checkpoints/epoch-1/`.
+It contains the LoRA adapter, tokenizer, uncalibrated `head.pt`, and training config;
+inference still requires the base model and the custom pointer head code.
+This upload blocks until complete, then training continues. The final upload at the
+repository root preserves this early checkpoint folder. Set `hub_upload_epoch=0`
+to disable the early upload, or choose a different epoch. Changes apply to new
+jobs only; an already-running job uses the source snapshot submitted at launch.
 
 Set `gpu_id` in `config.yaml` or override it on the command line. The backbone,
 pointer head, and batches all use this selected CUDA GPU. The index is relative
@@ -112,8 +120,9 @@ Regenerate for the matching Python/platform if you change the job image. Resolvi
 the dependency set does not verify CUDA execution; the GPU startup checks still
 run in the actual job.
 
-Checkpoints live on the job's temporary disk until the final Hub upload succeeds.
-If the job fails or reaches its timeout first, local checkpoints are lost. Mount
+Checkpoints live on the job's temporary disk until their Hub upload succeeds.
+The uploaded epoch-1 checkpoint survives a later job failure; any checkpoints
+that have not been uploaded are lost when the job's disk is removed. Mount
 an HF Storage Bucket and use it as `output_dir` when checkpoint persistence across
 failed jobs is required; the current launcher does not mount one automatically.
 
