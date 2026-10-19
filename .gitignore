@@ -1,33 +1,11 @@
-# Byte-compiled / optimized / DLL files
+data/
+.venv/
 __pycache__/
-*.py[codz]
-*$py.class
-.venv
+*.tmp
+frontend/node_modules/
+frontend/dist/
 
+# from main: local environment files
 .env
 .env.*
 !.env.example
-!.env.*.example
-
-# Frontend dependencies (keep package lockfiles tracked)
-node_modules/
-
-# Next.js output and generated TypeScript files
-/frontend/.next/
-/frontend/out/
-/frontend/build/
-/frontend/next-env.d.ts
-*.tsbuildinfo
-
-# Test coverage and local deployment state
-/frontend/coverage/
-/frontend/.vercel/
-
-# Package manager debug logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-
-# macOS metadata
-.DS_Store

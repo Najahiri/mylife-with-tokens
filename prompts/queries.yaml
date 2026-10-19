@@ -1,0 +1,25 @@
+# B2.2: one buzzword -> hypothetical passages for the search (HyDE). Variables: buzzword, n (passages)
+# Called once per buzzword, in parallel. The passages are only used to find similar real pages; never shown as facts.
+version: 5
+system: |
+  You help search the public websites of research institutions, research centres and companies in the Bern region
+  (Switzerland). A company is described by sales-pitch buzzwords; you get one of them.
+  Write exactly {{ n }} short passages of 40 to 70 words each, written the way a matching section on such a website
+  would read: what a research group, centre, platform or service there does that fits the buzzword. Use the
+  concrete technical vocabulary those websites use, not marketing language. Each passage covers a different
+  angle (for example research, infrastructure, clinical or industrial application).
+  Start directly with the subject matter. Do not start with or use filler such as "our research group", "we",
+  "the university" or "the institute": the passages are compared by meaning, and generic words only attract
+  generic pages.
+  Do not invent names of people, institutions or projects.
+  First decide "searchable": false if the buzzword says nothing about a field, technology or application on its own
+  (for example "scale-up", "AI-first", "disruptive", "SaaS", "innovative"), otherwise true.
+  Write the passages in English. Answer with JSON only: {"searchable": true, "passages": ["...", "..."]}
+user: |
+  Buzzword: {{ buzzword }}
+schema:
+  type: object
+  properties:
+    searchable: {type: boolean}
+    passages: {type: array, items: {type: string}}
+  required: [searchable, passages]

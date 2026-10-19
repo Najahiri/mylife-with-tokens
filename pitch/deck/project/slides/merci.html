@@ -1,0 +1,34 @@
+<section id="merci" data-transition="magic" style="background:#0E1C2F;color:#FFFFFF;font-family:'Inter', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column">
+<x-embed style="position:absolute;left:0;top:0;width:1920px;height:1080px"><!doctype html><html style="background:#0E1C2F;color-scheme:light"><body style="margin:0;overflow:hidden;background:#0E1C2F"><canvas id="c"></canvas><script>
+const INK="170,195,232",LINK=.3,DOT=.45,REACH=250,MAXL=3,FADE=700;
+const c=document.getElementById("c"),x=c.getContext("2d");
+const still=matchMedia("(prefers-reduced-motion: reduce)").matches;
+let W,H,N=[],L=[],last=0;
+function size(){W=innerWidth;H=innerHeight;const r=Math.min(devicePixelRatio||1,2);c.width=W*r;c.height=H*r;c.style.width=W+"px";c.style.height=H+"px";x.setTransform(r,0,0,r,0,0);
+N=[];const n=Math.round(W*H/23000);for(let i=0;i<n;i++)N.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.05,vy:(Math.random()-.5)*.05,r:2.6+Math.random()*2.6,k:0});L=[];for(let i=0;i<240;i++)step(16);}
+const d=(a,b)=>Math.hypot(N[a].x-N[b].x,N[a].y-N[b].y);
+function step(dt){for(const n of N){n.x+=n.vx*dt;n.y+=n.vy*dt;if(n.x<0||n.x>W)n.vx*=-1;if(n.y<0||n.y>H)n.vy*=-1;}
+L=L.filter(l=>{l.age+=dt;const g=l.age>l.life+FADE||d(l.a,l.b)>REACH*1.3;if(g){N[l.a].k--;N[l.b].k--;}return!g;});
+for(let t=0;t<4&&L.length<N.length;t++){const a=Math.random()*N.length|0,b=Math.random()*N.length|0;
+if(a===b||N[a].k>=MAXL||N[b].k>=MAXL||d(a,b)>REACH||L.some(l=>(l.a===a&&l.b===b)||(l.a===b&&l.b===a)))continue;
+L.push({a,b,age:0,life:2500+Math.random()*4500});N[a].k++;N[b].k++;}}
+function draw(){x.clearRect(0,0,W,H);x.lineWidth=1.6;
+for(const l of L){const f=Math.min(1,l.age/FADE)*Math.min(1,Math.max(0,(l.life+FADE-l.age)/FADE));x.strokeStyle=`rgba(${INK},${LINK*f})`;x.beginPath();x.moveTo(N[l.a].x,N[l.a].y);x.lineTo(N[l.b].x,N[l.b].y);x.stroke();}
+x.fillStyle=`rgba(${INK},${DOT})`;for(const n of N){x.beginPath();x.arc(n.x,n.y,n.r,0,7);x.fill();}}
+function loop(t){const dt=Math.min(50,last?t-last:16);last=t;step(dt);draw();requestAnimationFrame(loop);}
+size();addEventListener("resize",size);if(still)draw();else requestAnimationFrame(loop);
+</script></body></html></x-embed>
+<p id="mark" style="position:absolute;left:96px;top:30px;width:340px;font-family:'Abhaya Libre', Georgia, serif;font-size:60px;font-weight:800;line-height:1;letter-spacing:-1px;color:#FFFFFF"><span style="color:#E50611">RAG</span>lette</p>
+<div style="position:absolute;left:470px;top:44px;width:800px;display:flex;gap:48px">
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;line-height:1.2;color:#A9B1BD;border-bottom:4px solid #0E1C2F;padding:0 0 6px 0">01 PROBLEM</p>
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;line-height:1.2;color:#A9B1BD;border-bottom:4px solid #0E1C2F;padding:0 0 6px 0">02 HOW IT WORKS</p>
+<p style="font-size:24px;font-weight:700;letter-spacing:3px;line-height:1.2;color:#FFFFFF;border-bottom:4px solid #E50611;padding:0 0 6px 0">03 MERCI</p>
+</div>
+<p style="position:absolute;right:96px;top:46px;width:460px;text-align:right;font-size:24px;font-weight:700;letter-spacing:3px;line-height:1.2;color:#A9B1BD">BUILT AT HACK APERTUS</p>
+<div id="bar" style="position:absolute;left:0;top:114px;width:1920px;height:6px;background:#E50611"></div>
+<h1 data-build-in="pop 1 auto" style="position:absolute;left:112px;top:250px;width:1500px;font-family:'Abhaya Libre', Georgia, serif;font-size:360px;font-weight:800;line-height:0.95;letter-spacing:-8px;color:#FFFFFF">Merci<span style="color:#E50611">.</span></h1>
+<p data-build-in="fade 2 auto" style="position:absolute;left:128px;top:640px;width:1400px;font-size:36px;font-weight:600;letter-spacing:4px;color:#A9B1BD">DANKE · GRAZIE · GRAZIA · THANK YOU</p>
+<p data-build-in="rise 3 auto" style="position:absolute;left:128px;top:740px;width:1300px;font-size:48px;font-weight:500;line-height:1.25;color:#FFFFFF">Questions? Let’s try it live, with a company of your choice.</p>
+<p data-build-in="fade 4 auto" style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;line-height:1.3;color:#A9B1BD">RAGlette · Mylife with Tokens: Daniele, Han, Marc · built at Hack Apertus with Apertus, the Swiss open language model</p>
+<aside>Thank you. Happy to take questions, and even better: give us a company and we will build its pitch deck live.</aside>
+</section>
