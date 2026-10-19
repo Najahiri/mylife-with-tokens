@@ -261,7 +261,7 @@ function Composer({ value, onChange, onSend, onStop, running, placeholder }: {
 
 function UserBubble({ text }: { text: string }) {
   return (
-    <p className="animate-in-up max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground">
+    <p className="animate-in-up max-w-[min(85%,48rem)] self-end rounded-3xl rounded-br-lg bg-primary px-5 py-3 text-sm leading-relaxed whitespace-pre-wrap text-primary-foreground selection:bg-white selection:text-primary">
       {text}
     </p>
   );
@@ -317,7 +317,8 @@ function ToolStep({ call, result }: { call: ToolCall; result?: ToolResult }) {
   if (result?.error) return <StepRow icon={<Repeat />} label={`${call.name} failed`} details={<p>{result.text}</p>} />;
 
   if (call.name === "search") {
-    const passages = (args.passages as string[] | undefined) ?? [];
+    const passages = (info.passages as string[] | undefined) ?? (args.passages as string[] | undefined) ?? [];
+    if (info.limited) return <StepRow icon={<Search />} label="Search limit reached" meta={`${info.limited} searches per message`} />;
     return (
       <StepRow icon={<Search />} label="Searched" pending={!result}
                meta={`${passages.length} passages${result ? ` → ${pages.length} pages` : ""}`}
@@ -330,7 +331,7 @@ function ToolStep({ call, result }: { call: ToolCall; result?: ToolResult }) {
   if (call.name === "read_pages") {
     const asked = (args.pages as number[] | undefined) ?? [];
     return <StepRow icon={<BookOpen />} label="Read pages" pending={!result}
-                    meta={result ? `${pages.length} full pages` : `${asked.length} pages`}
+                    meta={result ? `${pages.length} full pages${info.skipped ? ` · ${info.skipped} over the limit` : ""}` : `${asked.length} pages`}
                     details={result && pages.length ? <PageLinks pages={pages} /> : undefined} />;
   }
   if (call.name === "add_items") {

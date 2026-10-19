@@ -46,6 +46,9 @@ brief:
 
 agent:                       # Orchestrator im Chat
   max_steps: 15               # höchstens so viele Modellaufrufe pro Nachricht
+  max_searches: 3             # höchstens so viele Suchen pro Nachricht
+  max_passages: 6             # höchstens so viele Suchtexte (HyDE-Passages) pro Suche
+  max_pages_read: 12          # höchstens so viele ganze Seiten lesen pro Nachricht
 
 check:                       # B5
   evidence_min_ratio: 90     # Zitat muss zu mindestens so viel % in einer Quellseite stehen

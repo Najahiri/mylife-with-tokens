@@ -24,6 +24,15 @@ SCHEMA = [
          {"key": "max_steps", "label": "Maximum steps per message", "type": "int", "min": 1, "max": 50,
           "hint": "How often the agent may call Apertus for one message; each call can run tools. Stops a loop that "
                   "does not come to an end."},
+         {"key": "max_searches", "label": "Maximum searches per message", "type": "int", "min": 1, "max": 20,
+          "hint": "Each search lists up to the pages-per-search setting. More searches collect more candidate pages, "
+                  "but take longer and fill Apertus' context."},
+         {"key": "max_passages", "label": "Maximum passages per search", "type": "int", "min": 1, "max": 30,
+          "hint": "The short texts Apertus writes to search with (HyDE): each is written like a matching web page "
+                  "and searched separately. More passages cover more angles, but each one takes search time."},
+         {"key": "max_pages_read", "label": "Maximum pages read per message", "type": "int", "min": 1, "max": 100,
+          "hint": "How many pages the agent may read in full for one message. Full pages are long: many of them make "
+                  "every following Apertus call slower and can exceed its context."},
      ]},
     {"section": "brief", "title": "Slides", "intro": "What the agent writes on the slides.",
      "applies": "from the next message", "editable": True,

@@ -17,7 +17,9 @@ A text answer without a tool call ends the turn, unless the agent has searched o
 items: then it is reminded, and the next step is forced to be the call that naturally follows (read_pages
 after a search, add_items after reading; named tool choice, so the server generates the call and holds it to
 the tool's schema). At most `NUDGES` times per message.
-An identical repeated tool call is not run again.
+An identical repeated tool call is not run again. Per message the agent may search at most `agent.max_searches` times,
+with at most `agent.max_passages` passages each, and read at most `agent.max_pages_read` pages in full; beyond that
+the tools say so instead of running.
 
 Apertus sometimes writes its reasoning into the text, ended by <|inner_suffix|>, or a tool call in its raw
 format (<|tools_prefix|>[...]<|tools_suffix|>) that the server's parser missed; the smaller models also write a
@@ -130,12 +132,13 @@ def _item_schema(max_items: int) -> dict:
     return {**brief["schema"]["properties"]["items"], "maxItems": max_items}
 
 
-def _tools(max_items: int) -> list[Tool]:
+def _tools(max_items: int, max_passages: int) -> list[Tool]:
     d = _spec()["tools"]
     noop = lambda **_: None   # we run the tools ourselves, see _run_tool
     return [
-        Tool("search", d["search"], {"type": "object", "required": ["passages"], "properties": {
-            "passages": {"type": "array", "items": {"type": "string"}, "minItems": 1}}}, noop),
+        Tool("search", d["search"].strip() + f" At most {max_passages} passages per call.", {"type": "object", "required": ["passages"], "properties": {
+            "passages": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": max_passages}}},
+             noop),
         Tool("read_pages", d["read_pages"], {"type": "object", "required": ["pages"], "properties": {
             "pages": {"type": "array", "items": {"type": "integer"}, "minItems": 1}}}, noop),
         Tool("add_items", d["add_items"], {"type": "object", "required": ["items"], "properties": {
@@ -156,8 +159,14 @@ def _tools(max_items: int) -> list[Tool]:
 
 
 # ---------- tools ----------
-def _search(s: Session, searcher: Searcher, passages: list[str]) -> tuple[str, dict]:
+def _search(s: Session, searcher: Searcher, passages: list[str], budget: dict) -> tuple[str, dict]:
+    if budget["searches"] <= 0:
+        return (f"Search limit for this message reached ({budget['max_searches']} searches). Do not search again: "
+                f"read the best of the pages found with read_pages, or add items from the pages you have read."), \
+            {"limited": budget["max_searches"]}
+    budget["searches"] -= 1
     terms = list(dict.fromkeys(p.strip() for p in passages if isinstance(p, str) and p.strip()))
+    terms = terms[:budget["max_passages"]]
     found = searcher.search(terms) if terms else []
     lines = []
     for p in found:
@@ -184,19 +193,25 @@ def _page_text(page_id: str) -> str:
     return row[0] if row else ""
 
 
-def _read_pages(s: Session, pages: list[int]) -> tuple[str, dict]:
-    out, new = [], []
+def _read_pages(s: Session, pages: list[int], budget: dict) -> tuple[str, dict]:
+    out, new, skipped = [], [], []
     for n in dict.fromkeys(pages):
         if not isinstance(n, int) or not 1 <= n <= len(s.pages):
             out.append(f"[Page {n}] does not exist. Use the numbers from the search results.")
         elif n in s.read:
             out.append(f"[Page {n}] already read above.")
+        elif budget["pages"] <= 0:
+            skipped.append(n)
         else:
+            budget["pages"] -= 1
             p = s.pages[n - 1]
             out.append(f"[Page {n}] {p['website']} · {p['title']}\nURL: {p['url']}\n{_page_text(p['page_id'])}")
             s.read.add(n)
             new.append(n)
-    return "\n\n".join(out), {"pages": [_page_info(s, n) for n in new]}
+    if skipped:
+        out.append(f"Not read: pages {', '.join(map(str, skipped))}. The limit for this message is "
+                   f"{budget['max_pages']} pages read in full; work with the pages above and add items from them.")
+    return "\n\n".join(out), {"pages": [_page_info(s, n) for n in new], "skipped": len(skipped)}
 
 
 def _normalize(item: dict) -> tuple[dict, list[str]]:
@@ -385,11 +400,12 @@ def _state(s: Session) -> str:
     return "\n".join(lines)
 
 
-def _run_tool(s: Session, searcher: Searcher, name: str, args: dict, max_items: int) -> tuple[str, dict]:
+def _run_tool(s: Session, searcher: Searcher, name: str, args: dict, max_items: int,
+              budget: dict) -> tuple[str, dict]:
     if name == "search":
-        return _search(s, searcher, args.get("passages") or [])
+        return _search(s, searcher, args.get("passages") or [], budget)
     if name == "read_pages":
-        return _read_pages(s, args.get("pages") or [])
+        return _read_pages(s, args.get("pages") or [], budget)
     if name == "add_items":
         return _add(s, searcher, args.get("items") or [], max_items)
     if name == "remove_items":
@@ -491,14 +507,20 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
     t0 = time.time()
     cfg = config.load()
     max_items, max_steps = cfg["brief"]["max_items"], cfg["agent"]["max_steps"]
-    system = Template(_spec()["system"]).render(language=cfg["brief"]["language"], max_items=max_items)
+    a = cfg["agent"]
+    # per message: how often the agent may search and how many pages it may read in full
+    budget = {"max_searches": a["max_searches"], "searches": a["max_searches"], "max_passages": a["max_passages"],
+              "max_pages": a["max_pages_read"], "pages": a["max_pages_read"]}
+    system = Template(_spec()["system"]).render(language=cfg["brief"]["language"], max_items=max_items,
+                                                max_passages=a["max_passages"], max_searches=a["max_searches"],
+                                                max_pages_read=a["max_pages_read"])
     s.stop.clear()
 
     def watch(_chunk):                   # the stop button ends even an answer that is still streaming
         if s.stop.is_set():
             raise Stopped()
 
-    llm = generator("agent", cfg["llm"], tools=_tools(max_items), on_chunk=watch)
+    llm = generator("agent", cfg["llm"], tools=_tools(max_items, a["max_passages"]), on_chunk=watch)
     start = len(s.events)
 
     def emit(event: dict) -> dict:
@@ -519,7 +541,8 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
             if s.stop.is_set():
                 raise Stopped()
             # after a reminder the next step is an add_items call; otherwise the model may also plan in text
-            prompt = ChatMessage.from_system(system + "\n" + _state(s))
+            prompt = ChatMessage.from_system(system + "\n" + _state(s) + f"\n- left for this message: "
+                                             f"{budget['searches']} searches, {budget['pages']} pages to read in full")
             reply = llm.run(messages=[prompt, *s.messages], **(_force(force) if force else {}))["replies"][0]
             cut_off = reply.meta.get("finish_reason") == "length"
             reply, reasoning = _clean(reply)
@@ -549,6 +572,9 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
             for call in reply.tool_calls:
                 if s.stop.is_set():
                     raise Stopped()
+                if call.tool_name == "search":   # passages over the limit are dropped from the call itself
+                    passages = [p.strip() for p in call.arguments.get("passages") or [] if isinstance(p, str) and p.strip()]
+                    call.arguments["passages"] = list(dict.fromkeys(passages))[:budget["max_passages"]]
                 key = json.dumps([call.tool_name, call.arguments], sort_keys=True)
                 if key in done_calls:
                     s.messages.append(ChatMessage.from_tool(
@@ -567,7 +593,7 @@ def turn(s: Session, text: str, searcher: Searcher) -> Iterator[dict]:
                             "arguments": call.arguments if call.tool_name != "add_items"
                             else {"items": len(call.arguments.get("items") or [])}})
                 try:
-                    result, info = _run_tool(s, searcher, call.tool_name, call.arguments, max_items)
+                    result, info = _run_tool(s, searcher, call.tool_name, call.arguments, max_items, budget)
                     error = False
                 except Exception as e:   # the agent sees the error and can react to it
                     result, info, error = f"Error: {e}", {}, True
