@@ -1,4 +1,5 @@
 """Custom Haystack components for the indexing pipeline."""
+
 import hashlib
 import re
 from collections import Counter, defaultdict
@@ -18,8 +19,15 @@ class BoilerplateRemover:
     (absolute count for large sites, share of pages for small ones). Must see a whole source at once.
     """
 
-    def __init__(self, max_words: int = 12, min_pages: int = 3, share: float = 0.2, cap: int = 50):
-        self.max_words, self.min_pages, self.share, self.cap = max_words, min_pages, share, cap
+    def __init__(
+        self, max_words: int = 12, min_pages: int = 3, share: float = 0.2, cap: int = 50
+    ):
+        self.max_words, self.min_pages, self.share, self.cap = (
+            max_words,
+            min_pages,
+            share,
+            cap,
+        )
         self.stats = {"lines_removed": 0, "boilerplate_lines": 0}
 
     @component.output_types(documents=list[Document])
@@ -31,8 +39,13 @@ class BoilerplateRemover:
         for docs in by_source.values():
             df = Counter()
             for doc in docs:
-                df.update({_norm(l) for l in (doc.content or "").splitlines()
-                           if l.strip() and len(l.split()) <= self.max_words})
+                df.update(
+                    {
+                        _norm(l)
+                        for l in (doc.content or "").splitlines()
+                        if l.strip() and len(l.split()) <= self.max_words
+                    }
+                )
             threshold = max(self.min_pages, min(self.cap, int(self.share * len(docs))))
             boiler = {line for line, n in df.items() if n >= threshold}
             self.stats["boilerplate_lines"] += len(boiler)

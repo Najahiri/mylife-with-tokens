@@ -6,6 +6,7 @@
 The search index (Qdrant, local mode) can only be opened by one process: stop the API before running
 `python -m rag_model.search` or the indexing steps, and the other way round.
 """
+
 import base64
 import json
 import re
@@ -30,14 +31,16 @@ from rag_model.settings import list_models, test_connection
 from scraper import sources as source_list
 
 state: dict = {}
-sessions: dict[str, agent.Session] = {}     # agent conversations, saved in data/sessions/
+sessions: dict[str, agent.Session] = {}  # agent conversations, saved in data/sessions/
 busy: dict[str, threading.Lock] = {}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     state["searcher"] = Searcher()
-    state["searcher"].embed("warm up")   # load BGE-M3 once at start, not on the first request
+    state["searcher"].embed(
+        "warm up"
+    )  # load BGE-M3 once at start, not on the first request
     sessions.update(agent.load_sessions())
     busy.update({sid: threading.Lock() for sid in sessions})
     yield
@@ -50,7 +53,7 @@ app = FastAPI(title="RAGlette", lifespan=lifespan)
 # ---------- request bodies ----------
 class QueriesIn(BaseModel):
     buzzwords: list[str] = Field(min_length=1)
-    mode: Literal["direct", "apertus"] | None = None   # default: Settings → Search terms
+    mode: Literal["direct", "apertus"] | None = None  # default: Settings → Search terms
 
 
 class RetrieveIn(BaseModel):
@@ -64,7 +67,7 @@ class RetrieveIn(BaseModel):
 class BriefIn(BaseModel):
     buzzwords: list[str] = Field(min_length=1)
     page_ids: list[str]
-    queries: list[dict] | None = None     # only for the trace
+    queries: list[dict] | None = None  # only for the trace
     mode: str | None = None
 
 
@@ -74,6 +77,9 @@ class SettingsIn(BaseModel):
     model_queries: str | None = None
     model_brief: str | None = None
     model_agent: str | None = None
+    decision_url: str | None = None
+    decision_api_key: str | None = None
+    decision_model: str | None = None
 
 
 class MessageIn(BaseModel):
@@ -103,7 +109,9 @@ class DeckIn(BaseModel):
     kicker: str = ""
     overview: bool = True
     contacts_slide: bool = True
-    ppi: int = Field(72, ge=30, le=220)   # preview resolution; the big view asks for more
+    ppi: int = Field(
+        72, ge=30, le=220
+    )  # preview resolution; the big view asks for more
 
 
 def _clean(items: list[str]) -> list[str]:
@@ -147,7 +155,9 @@ def remove_items(sid: str, body: RemoveIn):
     if sid not in sessions:
         raise HTTPException(404, "conversation not found (the API was restarted?)")
     if busy[sid].locked():
-        raise HTTPException(409, "the agent is still working; delete the slide when it has answered")
+        raise HTTPException(
+            409, "the agent is still working; delete the slide when it has answered"
+        )
     agent.remove_by_user(sessions[sid], body.titles)
     return sessions[sid].view()
 
@@ -171,13 +181,23 @@ def send_message(sid: str, body: MessageIn):
             sessions[sid].save()
             lock.release()
 
-    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(
+        events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"}
+    )
 
 
 # ---------- presentation ----------
 def _deck(body: DeckIn) -> dict:
-    return presentation.deck_data(body.items, body.company, body.author, body.organizer, body.subtitle, body.kicker,
-                                  body.overview, body.contacts_slide)
+    return presentation.deck_data(
+        body.items,
+        body.company,
+        body.author,
+        body.organizer,
+        body.subtitle,
+        body.kicker,
+        body.overview,
+        body.contacts_slide,
+    )
 
 
 @app.post("/api/presentation/preview")
@@ -188,8 +208,12 @@ def preview(body: DeckIn):
         slides = presentation.render(data, "png", ppi=body.ppi)
     except Exception as e:
         raise HTTPException(422, f"Typst: {e}")
-    return {"slides": ["data:image/png;base64," + base64.b64encode(s).decode() for s in slides],
-            "map": presentation.slide_map(data)}
+    return {
+        "slides": [
+            "data:image/png;base64," + base64.b64encode(s).decode() for s in slides
+        ],
+        "map": presentation.slide_map(data),
+    }
 
 
 @app.get("/api/presentation/defaults")
@@ -204,8 +228,13 @@ def pdf(body: DeckIn):
     except Exception as e:
         raise HTTPException(422, f"Typst: {e}")
     name = re.sub(r"[^\w-]+", "-", body.company.strip() or "company").strip("-")
-    return Response(data, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="{name}-business-case.pdf"'})
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}-business-case.pdf"'
+        },
+    )
 
 
 # ---------- pipeline ----------
@@ -216,7 +245,7 @@ def queries(body: QueriesIn):
     try:
         mode = body.mode or config.load()["queries"]["mode"]
         out = rag.search_terms(_clean(body.buzzwords), mode)
-    except RuntimeError as e:      # API not configured
+    except RuntimeError as e:  # API not configured
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise _llm_error(e)
@@ -227,16 +256,32 @@ def queries(body: QueriesIn):
 def retrieve(body: RetrieveIn):
     """B3: search terms -> selected pages."""
     t0 = time.time()
-    pages = state["searcher"].search(_clean(body.terms), body.top_k, body.top_n, body.max_per_site, body.min_similarity)
-    return {"pages": [rag.page_dict(p) for p in pages], "took_s": round(time.time() - t0, 1)}
+    pages = state["searcher"].search(
+        _clean(body.terms),
+        body.top_k,
+        body.top_n,
+        body.max_per_site,
+        body.min_similarity,
+    )
+    return {
+        "pages": [rag.page_dict(p) for p in pages],
+        "took_s": round(time.time() - t0, 1),
+    }
 
 
 @app.post("/api/brief")
 def brief(body: BriefIn):
     """B4–B6: selected pages -> checked pitch information."""
     try:
-        return rag.brief(_clean(body.buzzwords), body.page_ids, state["searcher"],
-                         {"mode": body.mode or config.load()["queries"]["mode"], "queries": body.queries})
+        return rag.brief(
+            _clean(body.buzzwords),
+            body.page_ids,
+            state["searcher"],
+            {
+                "mode": body.mode or config.load()["queries"]["mode"],
+                "queries": body.queries,
+            },
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -310,10 +355,20 @@ def test():
 @app.get("/api/health")
 def health():
     db = sqlite3.connect(ROOT / "data" / "index.sqlite")
-    pages, sites = db.execute("SELECT count(*), count(DISTINCT source) FROM pages").fetchone()
+    pages, sites = db.execute(
+        "SELECT count(*), count(DISTINCT source) FROM pages"
+    ).fetchone()
     s = public_settings()
-    return {"status": "ok", "pages": pages, "websites": sites,
-            "llm_configured": bool(s.get("key_set") and s.get("model_queries") and s.get("model_brief"))}
+    chat_ready = bool(s.get("base_url") and s.get("key_set") and s.get("model_agent"))
+    decision_ready = bool(s.get("decision_url") and s.get("decision_key_set"))
+    return {
+        "status": "ok",
+        "pages": pages,
+        "websites": sites,
+        "llm_configured": chat_ready,
+        "decision_configured": decision_ready,
+        "agent_configured": chat_ready and decision_ready,
+    }
 
 
 # ---------- built UI ----------
@@ -327,4 +382,6 @@ if DIST.exists():
         if path and file.is_file():
             return FileResponse(file)
         # index.html must never be cached: it points to the current build's hashed asset files
-        return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"})
+        return FileResponse(
+            DIST / "index.html", headers={"Cache-Control": "no-cache, must-revalidate"}
+        )

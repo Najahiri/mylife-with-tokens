@@ -29,9 +29,9 @@ export function Header() {
               <span className="size-2 rounded-full bg-primary" /> Backend offline
             </span>
           )}
-          {health.data && !health.data.llm_configured && (
+          {health.data && !health.data.agent_configured && (
             <NavLink to="/settings" className="flex items-center gap-1.5 text-white/70 hover:text-primary">
-              <span className="size-2 rounded-full bg-amber-400" /> Set up Apertus
+              <span className="size-2 rounded-full bg-amber-400" /> Set up model APIs
             </NavLink>
           )}
           <a href="https://hackapertus.ch/" target="_blank" rel="noreferrer"

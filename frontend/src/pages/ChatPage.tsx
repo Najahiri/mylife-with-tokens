@@ -225,10 +225,10 @@ function PageLinks({ pages }: { pages: PageInfo[] }) {
   return (
     <ul className="flex flex-col gap-1">
       {pages.map((p) => (
-        <li key={p.n} className="truncate">
+        <li key={p.n} className="min-w-0 break-words [overflow-wrap:anywhere]">
           <span className="font-mono">[{p.n}]</span>{" "}
-          <a href={p.url} target="_blank" rel="noreferrer" className="hover:text-primary">{p.title || p.url}</a>
-          <span> · {p.website}</span>
+          <a href={p.url} target="_blank" rel="noreferrer" className="hover:text-primary">{p.title?.trim() || p.url || `Page ${p.n}`}</a>
+          {p.website && <span> · {p.website}</span>}
         </li>
       ))}
     </ul>
@@ -256,7 +256,7 @@ function ToolStep({ call, result }: { call: ToolCall; result?: ToolResult }) {
   if (call.name === "read_pages") {
     const asked = (args.pages as number[] | undefined) ?? [];
     return <StepRow icon={<BookOpen />} label="Read pages" pending={!result}
-                    meta={result ? `${pages.length} full pages` : `${asked.length} pages`}
+                    meta={result ? `${pages.length} full ${pages.length === 1 ? "page" : "pages"}` : `${asked.length} pages`}
                     details={result && pages.length ? <PageLinks pages={pages} /> : undefined} />;
   }
   if (call.name === "add_items") {

@@ -1,0 +1,29 @@
+schema_version: 1
+namespace: HX-Tfd
+vendor: aws
+region: us-east-1
+min_replica: 0
+max_replica: 1
+scale_to_zero_timeout: 15  # Minutes; cold starts and initializing time can still be billed.
+decision:
+  model: HX-Tfd/Apertus-1.5-8B-Decision
+  revision: decdf70c1939e4216eea299aac6e54bc99e1cead
+  subfolder: ""  # This uploaded commit contains the checkpoint at the repository root.
+  base_revision: 1e28c426548b1853c11e9dbd386e27accbdad19f
+  hardware: aws-us-east-1-nvidia-l4-x1
+  estimated_usd_per_active_hour: 0.8
+  dockerfile: serving/Dockerfile.decision
+  env:
+    DECISION_MODEL_ID: HX-Tfd/Apertus-1.5-8B-Decision
+    DECISION_REVISION: decdf70c1939e4216eea299aac6e54bc99e1cead
+    DECISION_SUBFOLDER: ""
+    DECISION_BASE_REVISION: 1e28c426548b1853c11e9dbd386e27accbdad19f
+    DECISION_MODEL_PATH: /repository
+    DECISION_MAX_LENGTH: "2048"
+    DECISION_4BIT: "true"
+  secrets: [HF_TOKEN, DECISION_API_KEY]
+application_config:
+  llm:
+    max_tokens: 1024
+    stream: true
+    response_format: json_schema

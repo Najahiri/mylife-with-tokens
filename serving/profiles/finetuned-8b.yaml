@@ -1,0 +1,20 @@
+name: finetuned-8b
+layout: shared_backbone
+generation:
+  model: HX-Tfd/Apertus-1.5-8B-Decision
+  revision: decdf70c1939e4216eea299aac6e54bc99e1cead
+  hardware: aws-us-east-1-nvidia-l4-x1
+  estimated_usd_per_active_hour: 0.8
+  dockerfile: serving/Dockerfile.shared
+  env:
+    CHAT_MODEL_ID: HX-Tfd/Apertus-1.5-8B-Decision
+    CHAT_TEMPLATE_MODEL: swiss-ai/Apertus-v1.5-8B
+    CHAT_TEMPLATE_REVISION: ef4bbc54d6fe658bc782280ff9f3b53a10a9758f
+    CHAT_MAX_MODEL_LEN: "8192"
+    CHAT_MAX_NEW_TOKENS: "1024"
+  secrets: [HF_TOKEN, DECISION_API_KEY, CHAT_API_KEY]
+notes:
+  - One adapter-loaded backbone in one process; pointer head for decisions, existing LM head for generation.
+  - Decision and generation requests share a lock and run sequentially on the GPU.
+  - Chat formatting is borrowed from the stock instruction release; the uploaded decision tokenizer has no chat template.
+  - Decision-only fine-tuning does not establish chat or tool-argument quality; this is an experimental generation option.

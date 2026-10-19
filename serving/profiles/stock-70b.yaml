@@ -1,0 +1,12 @@
+name: stock-70b
+layout: external_generation
+generation:
+  provider: keera
+  base_url: https://gateway.keera.ch/api/v1
+  model: apertus-v1-5-70b
+  secrets: [KEERA_API_KEY]
+notes:
+  - CSCS provides stock instruction-tuned 70B generation through the existing Keera gateway.
+  - Only the fine-tuned decision model needs an HF endpoint.
+  - Use the non-thinking alias so chat can generate tool arguments.
+  - Keera usage charges or allowance are separate from the HF cost estimate.

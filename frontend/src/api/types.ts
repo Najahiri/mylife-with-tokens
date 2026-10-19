@@ -103,6 +103,10 @@ export interface LlmSettings {
   model_agent?: string;
   key_set: boolean;
   key_last4: string;
+  decision_url?: string;
+  decision_model?: string;
+  decision_key_set?: boolean;
+  decision_key_last4?: string;
 }
 
 export interface Health {
@@ -110,6 +114,8 @@ export interface Health {
   pages: number;
   websites: number;
   llm_configured: boolean;
+  decision_configured: boolean;
+  agent_configured: boolean;
 }
 
 export interface TestResult {

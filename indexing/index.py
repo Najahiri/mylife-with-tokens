@@ -6,6 +6,7 @@ Usage:
     python indexing/index.py load      # A4.2: vectors -> Qdrant
     python indexing/index.py activate --db data/index.new.sqlite --qdrant data/qdrant.new   # swap in a new index (API stopped)
 """
+
 import argparse
 import hashlib
 import json
@@ -22,7 +23,9 @@ from haystack.components.joiners import DocumentJoiner
 from haystack.components.preprocessors import DocumentCleaner, RecursiveDocumentSplitter
 from haystack.components.routers import DocumentLengthRouter
 from haystack.dataclasses import ByteStream
-from haystack_integrations.components.classifiers.langdetect import DocumentLanguageClassifier
+from haystack_integrations.components.classifiers.langdetect import (
+    DocumentLanguageClassifier,
+)
 from selectolax.lexbor import LexborHTMLParser
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -45,6 +48,7 @@ def collection_name(model: str) -> str:
     """One Qdrant collection per embedding model, so switching models never mixes vectors."""
     return "chunks__" + "".join(c if c.isalnum() else "_" for c in model.lower())
 
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pages (
     id TEXT PRIMARY KEY, url TEXT, source TEXT, website TEXT, title TEXT,
@@ -60,23 +64,45 @@ CREATE INDEX IF NOT EXISTS chunks_page ON chunks(page_id);
 def build_convert_pipeline() -> Pipeline:
     """A2.1: HTML -> Markdown text. Runs in batches; everything after needs the whole corpus."""
     p = Pipeline()
-    p.add_component("convert", HTMLToDocument(extraction_kwargs={"output_format": "markdown", "include_tables": True}))
+    p.add_component(
+        "convert",
+        HTMLToDocument(
+            extraction_kwargs={"output_format": "markdown", "include_tables": True}
+        ),
+    )
     return p
 
 
-def build_prepare_pipeline(boilerplate: BoilerplateRemover, page_filter: PageFilter) -> Pipeline:
+def build_prepare_pipeline(
+    boilerplate: BoilerplateRemover, page_filter: PageFilter
+) -> Pipeline:
     """A2.2–A3.1: clean, filter, detect language, split long pages."""
     cfg = CONFIG["prepare"]
     p = Pipeline()
     p.add_component("boilerplate", boilerplate)
     p.add_component("filter", page_filter)
-    p.add_component("language", DocumentLanguageClassifier(languages=["de", "en", "fr", "it"]))
+    p.add_component(
+        "language", DocumentLanguageClassifier(languages=["de", "en", "fr", "it"])
+    )
     p.add_component("router", DocumentLengthRouter(threshold=cfg["short_page_chars"]))
-    p.add_component("split", RecursiveDocumentSplitter(
-        split_length=cfg["chunk_words"], split_overlap=cfg["overlap_words"], split_unit="word",
-        separators=["\n# ", "\n## ", "\n### ", "\n\n", "sentence", " "]))
-    p.add_component("join", DocumentJoiner(join_mode="concatenate", sort_by_score=False))
-    p.add_component("clean", DocumentCleaner(remove_empty_lines=True, remove_extra_whitespaces=True, keep_id=True))
+    p.add_component(
+        "split",
+        RecursiveDocumentSplitter(
+            split_length=cfg["chunk_words"],
+            split_overlap=cfg["overlap_words"],
+            split_unit="word",
+            separators=["\n# ", "\n## ", "\n### ", "\n\n", "sentence", " "],
+        ),
+    )
+    p.add_component(
+        "join", DocumentJoiner(join_mode="concatenate", sort_by_score=False)
+    )
+    p.add_component(
+        "clean",
+        DocumentCleaner(
+            remove_empty_lines=True, remove_extra_whitespaces=True, keep_id=True
+        ),
+    )
     p.connect("boilerplate.documents", "filter.documents")
     p.connect("filter.documents", "language.documents")
     p.connect("language.documents", "router.documents")
@@ -99,16 +125,24 @@ def iter_crawled_pages(websites: dict[str, str]):
         title_node = LexborHTMLParser(html).css_first("title")
         title = " ".join(title_node.text().split()) if title_node else ""
         page_url = final_url or url
-        yield ByteStream.from_string(html, meta={
-            "page_id": hashlib.sha1(page_url.encode()).hexdigest()[:16],
-            "url": page_url, "source": source, "website": websites.get(source, source),
-            "title": title, "crawled_at": fetched_at,
-        })
+        yield ByteStream.from_string(
+            html,
+            meta={
+                "page_id": hashlib.sha1(page_url.encode()).hexdigest()[:16],
+                "url": page_url,
+                "source": source,
+                "website": websites.get(source, source),
+                "title": title,
+                "crawled_at": fetched_at,
+            },
+        )
 
 
 def prepare():
-    websites = {s["name"]: s.get("label") or s.get("desc") or s["name"]
-                for s in yaml.safe_load(SOURCES.read_text())["sources"]}
+    websites = {
+        s["name"]: s.get("label") or s.get("desc") or s["name"]
+        for s in yaml.safe_load(SOURCES.read_text())["sources"]
+    }
     INDEX_DB.unlink(missing_ok=True)
     out = sqlite3.connect(INDEX_DB)
     out.executescript(SCHEMA)
@@ -119,34 +153,65 @@ def prepare():
     for stream in iter_crawled_pages(websites):
         batch.append(stream)
         if len(batch) == BATCH:
-            converted += convert.run({"convert": {"sources": batch}})["convert"]["documents"]
+            converted += convert.run({"convert": {"sources": batch}})["convert"][
+                "documents"
+            ]
             batch = []
             print(f"  converted {len(converted)} · {time.time() - t0:.0f}s", flush=True)
     if batch:
-        converted += convert.run({"convert": {"sources": batch}})["convert"]["documents"]
+        converted += convert.run({"convert": {"sources": batch}})["convert"][
+            "documents"
+        ]
 
     cfg = CONFIG["prepare"]
-    boilerplate, page_filter = BoilerplateRemover(**cfg["boilerplate"]), PageFilter(min_words=cfg["min_words"])
+    boilerplate, page_filter = (
+        BoilerplateRemover(**cfg["boilerplate"]),
+        PageFilter(min_words=cfg["min_words"]),
+    )
     result = build_prepare_pipeline(boilerplate, page_filter).run(
-        {"boilerplate": {"documents": converted}}, include_outputs_from={"language"})
+        {"boilerplate": {"documents": converted}}, include_outputs_from={"language"}
+    )
 
     for d in result["language"]["documents"]:
         m = d.meta
-        out.execute("INSERT OR IGNORE INTO pages VALUES (?,?,?,?,?,?,?,?)",
-                    (m["page_id"], m["url"], m["source"], m["website"], m["title"],
-                     m.get("language"), m["crawled_at"], d.content))
+        out.execute(
+            "INSERT OR IGNORE INTO pages VALUES (?,?,?,?,?,?,?,?)",
+            (
+                m["page_id"],
+                m["url"],
+                m["source"],
+                m["website"],
+                m["title"],
+                m.get("language"),
+                m["crawled_at"],
+                d.content,
+            ),
+        )
     positions: dict[str, int] = {}
     for d in result["clean"]["documents"]:
         pid = d.meta["page_id"]
         pos = positions[pid] = positions.get(pid, -1) + 1
         meta = {k: v for k, v in d.meta.items() if k != "content_hash"}
-        out.execute("INSERT OR REPLACE INTO chunks VALUES (?,?,?,?,?)",
-                    (f"{pid}-{pos}", pid, pos, d.content, json.dumps(meta, ensure_ascii=False, default=str)))
+        out.execute(
+            "INSERT OR REPLACE INTO chunks VALUES (?,?,?,?,?)",
+            (
+                f"{pid}-{pos}",
+                pid,
+                pos,
+                d.content,
+                json.dumps(meta, ensure_ascii=False, default=str),
+            ),
+        )
     out.commit()
 
-    n_pages, n_chunks = (out.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("pages", "chunks"))
-    print(f"done: {len(converted)} crawled pages -> {n_pages} pages, {n_chunks} chunks · "
-          f"boilerplate {boilerplate.stats} · filter {page_filter.stats} · {time.time() - t0:.0f}s")
+    n_pages, n_chunks = (
+        out.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+        for t in ("pages", "chunks")
+    )
+    print(
+        f"done: {len(converted)} crawled pages -> {n_pages} pages, {n_chunks} chunks · "
+        f"boilerplate {boilerplate.stats} · filter {page_filter.stats} · {time.time() - t0:.0f}s"
+    )
 
 
 def load():
@@ -158,29 +223,47 @@ def load():
 
     model = CONFIG["embedding"]["model"]
     db = sqlite3.connect(INDEX_DB)
-    rows = db.execute("""
+    rows = db.execute(
+        """
         SELECT c.id, c.content, c.meta, v.vec FROM chunks c JOIN vectors v ON v.chunk_id = c.id AND v.model = ?
-    """, (model,)).fetchall()
+    """,
+        (model,),
+    ).fetchall()
     total = db.execute("SELECT count(*) FROM chunks").fetchone()[0]
     if not rows:
-        raise SystemExit(f"no vectors for {model} in {INDEX_DB}; run indexing/embed.py first")
+        raise SystemExit(
+            f"no vectors for {model} in {INDEX_DB}; run indexing/embed.py first"
+        )
     if len(rows) < total:
         print(f"warning: only {len(rows)} of {total} chunks have vectors for {model}")
 
     dim = len(np.frombuffer(rows[0][3], dtype=np.float32))
-    store = QdrantDocumentStore(path=str(QDRANT_PATH), index=collection_name(model), embedding_dim=dim,
-                                similarity="cosine", recreate_index=True)
+    store = QdrantDocumentStore(
+        path=str(QDRANT_PATH),
+        index=collection_name(model),
+        embedding_dim=dim,
+        similarity="cosine",
+        recreate_index=True,
+    )
     writer = DocumentWriter(document_store=store, policy=DuplicatePolicy.OVERWRITE)
     keep = ("page_id", "url", "source", "website", "title", "language", "crawled_at")
     for i in range(0, len(rows), 2000):
         docs = []
-        for cid, content, meta, vec in rows[i:i + 2000]:
+        for cid, content, meta, vec in rows[i : i + 2000]:
             m = json.loads(meta)
-            docs.append(Document(id=cid, content=content, meta={k: m.get(k) for k in keep},
-                                 embedding=np.frombuffer(vec, dtype=np.float32).tolist()))
+            docs.append(
+                Document(
+                    id=cid,
+                    content=content,
+                    meta={k: m.get(k) for k in keep},
+                    embedding=np.frombuffer(vec, dtype=np.float32).tolist(),
+                )
+            )
         writer.run(documents=docs)
         print(f"  {i + len(docs)}/{len(rows)}", flush=True)
-    print(f"done: {len(rows)} chunks ({dim} dims) in collection {collection_name(model)} at {QDRANT_PATH}")
+    print(
+        f"done: {len(rows)} chunks ({dim} dims) in collection {collection_name(model)} at {QDRANT_PATH}"
+    )
 
 
 def activate(new_db: Path, new_qdrant: Path):
@@ -189,10 +272,17 @@ def activate(new_db: Path, new_qdrant: Path):
     The API must be stopped first, because Qdrant in local mode allows only one process on its folder.
     """
     import shutil
+
     for new, live in ((new_db, LIVE_DB), (new_qdrant, LIVE_QDRANT)):
         if not new.exists():
-            raise SystemExit(f"{new} does not exist; build it with prepare/embed/load first")
-        old = live.with_name(live.name.replace(".sqlite", "") + ".old" + (".sqlite" if live.suffix else ""))
+            raise SystemExit(
+                f"{new} does not exist; build it with prepare/embed/load first"
+            )
+        old = live.with_name(
+            live.name.replace(".sqlite", "")
+            + ".old"
+            + (".sqlite" if live.suffix else "")
+        )
         if old.exists():
             shutil.rmtree(old) if old.is_dir() else old.unlink()
         if live.exists():
@@ -204,8 +294,14 @@ def activate(new_db: Path, new_qdrant: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("stage", choices=["prepare", "load", "activate"])
-    ap.add_argument("--db", help="index database (default data/index.sqlite); build a new one next to the live index")
-    ap.add_argument("--qdrant", help="Qdrant folder (default data/qdrant); load into a new folder while the API runs")
+    ap.add_argument(
+        "--db",
+        help="index database (default data/index.sqlite); build a new one next to the live index",
+    )
+    ap.add_argument(
+        "--qdrant",
+        help="Qdrant folder (default data/qdrant); load into a new folder while the API runs",
+    )
     args = ap.parse_args()
     global INDEX_DB, QDRANT_PATH
     INDEX_DB = Path(args.db).resolve() if args.db else INDEX_DB

@@ -45,7 +45,8 @@ brief:
   max_items: 15               # höchstens so viele Punkte pro Antwort (maxItems im JSON-Schema)
 
 agent:                       # Orchestrator im Chat
-  max_steps: 15               # höchstens so viele Modellaufrufe pro Nachricht
+  max_steps: 15               # höchstens so viele Entscheidungs-/Generierungsschritte pro Nachricht
+  rank_candidates: 8          # Decision-Modell sortiert diese Retrieval-Shortlist (Rest bleibt in Retrieval-Reihenfolge).
 
 check:                       # B5
   evidence_min_ratio: 90     # Zitat muss zu mindestens so viel % in einer Quellseite stehen

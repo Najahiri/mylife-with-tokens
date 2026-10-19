@@ -40,13 +40,18 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
   const [modelQueries, setModelQueries] = useState(llm.model_queries ?? "");
   const [modelBrief, setModelBrief] = useState(llm.model_brief ?? "");
   const [modelAgent, setModelAgent] = useState(llm.model_agent ?? "");
+  const [decisionUrl, setDecisionUrl] = useState(llm.decision_url ?? "");
+  const [decisionKey, setDecisionKey] = useState("");
+  const [decisionModel, setDecisionModel] = useState(llm.decision_model ?? "");
 
   const models = useQuery({ queryKey: ["models"], queryFn: api.models, enabled: llm.key_set });
   const save = useMutation({
     mutationFn: () => api.saveSettings({ base_url: baseUrl, api_key: apiKey || undefined,
-      model_queries: modelQueries, model_brief: modelBrief, model_agent: modelAgent }),
+      model_queries: modelQueries, model_brief: modelBrief, model_agent: modelAgent,
+      decision_url: decisionUrl, decision_api_key: decisionKey || undefined, decision_model: decisionModel }),
     onSuccess: () => {
       setApiKey("");
+      setDecisionKey("");
       qc.invalidateQueries({ queryKey: ["settings"] });
       qc.invalidateQueries({ queryKey: ["health"] });
       qc.invalidateQueries({ queryKey: ["models"] });
@@ -75,12 +80,12 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl leading-none font-bold">Apertus access</h2>
         <p className="text-xs text-muted-foreground">
-          OpenAI-compatible API. The key stays in the backend and is never sent back to the browser.
+          Chat generation and fine-tuned decision scoring use separate APIs. Keys stay in the backend.
         </p>
       </div>
       <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium">API base URL</span>
+          <span className="text-xs font-medium">Chat API base URL</span>
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={field}
                  placeholder="https://gateway.keera.ch/api/v1" />
         </label>
@@ -92,9 +97,26 @@ function ApiAccess({ llm }: { llm: LlmSettings }) {
         </label>
         <div className="grid gap-5 sm:grid-cols-2">
           {modelField("Model for search terms (B2)", "translates buzzwords into technical terms, e.g. 8B", modelQueries, setModelQueries)}
-          {modelField("Model for pitch information (B4)", "reads the pages and backs the items with evidence, e.g. 70B", modelBrief, setModelBrief)}
-          {modelField("Model for the agent (chat)", "orchestrates the chat: writes the searches, reads pages, composes the items, e.g. 70B", modelAgent, setModelAgent)}
+          {modelField("Model for pitch information (B4)", "instruction-tuned Apertus 1.5 8B writes items backed by evidence", modelBrief, setModelBrief)}
+          {modelField("Model for the agent (chat)", "generates tool arguments, slide items and answers; Keera offers apertus-v1-5-8b and apertus-v1-5-70b for tool calling (choose without -thinking)", modelAgent, setModelAgent)}
         </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium">Decision API URL</span>
+          <input value={decisionUrl} onChange={(e) => setDecisionUrl(e.target.value)} className={field}
+                 placeholder="https://your-decision-service/decide" />
+          <span className="text-[11px] text-muted-foreground">Endpoint root or full /decide URL for scoring options.</span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium">Decision API key</span>
+          <input type="password" value={decisionKey} onChange={(e) => setDecisionKey(e.target.value)}
+                 className={field} autoComplete="off"
+                 placeholder={llm.decision_key_set ? `set (…${llm.decision_key_last4}), leave empty to keep it` : "Enter decision key"} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium">Decision model</span>
+          <input value={decisionModel} onChange={(e) => setDecisionModel(e.target.value)} className={field}
+                 placeholder="HX-Tfd/Apertus-1.5-8B-Decision" />
+        </label>
         <div className="flex gap-2">
           <Button type="submit" size="sm" disabled={save.isPending}>
             {save.isPending && <Loader2 className="animate-spin" />} Save

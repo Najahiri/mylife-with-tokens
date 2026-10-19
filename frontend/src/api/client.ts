@@ -71,7 +71,7 @@ async function downloadPdf(body: DeckFields & { items: Item[] }) {
 export const api = {
   health: () => call<Health>("/health"),
   settings: () => call<{ llm: LlmSettings; search: SearchOptions }>("/settings"),
-  saveSettings: (body: Partial<LlmSettings> & { api_key?: string }) =>
+  saveSettings: (body: Partial<LlmSettings> & { api_key?: string; decision_api_key?: string }) =>
     call<{ llm: LlmSettings }>("/settings", { method: "PUT", body }),
   models: () => call<{ models: string[] }>("/settings/models"),
   test: () => call<{ results: TestResult[] }>("/settings/test", { method: "POST" }),

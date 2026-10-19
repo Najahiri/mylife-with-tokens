@@ -1,0 +1,5 @@
+ARG CHAT_IMAGE=ghcr.io/swiss-ai/vllm_apertus_1.5_release:latest-amd64
+FROM ${CHAT_IMAGE}
+COPY serving/run_chat.sh /run_chat.sh
+EXPOSE 8000
+ENTRYPOINT ["bash", "/run_chat.sh"]

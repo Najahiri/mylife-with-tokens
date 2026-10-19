@@ -1,0 +1,10 @@
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+COPY serving/requirements.lock serving/requirements.lock
+RUN python -m pip install --no-cache-dir -r serving/requirements.lock && python -m pip check
+# Explicit copies keep local training credentials and outputs outside the image.
+COPY training/__init__.py training/model.py training/constants.py training/dataset.py training/
+COPY serving/__init__.py serving/decision.py serving/
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "serving.decision:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

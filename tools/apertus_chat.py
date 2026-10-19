@@ -11,6 +11,7 @@ Commands in the chat:
     /system <text>   set a system prompt          /temp <0..2>    set temperature
     /reset           forget the conversation      /quit           exit
 """
+
 import argparse
 import getpass
 import json
@@ -24,8 +25,11 @@ DEFAULT_URL = "https://gateway.keera.ch/api/v1"
 
 
 def request(url: str, key: str, payload: dict | None = None):
-    req = urllib.request.Request(url, data=json.dumps(payload).encode() if payload else None,
-                                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode() if payload else None,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
     return urllib.request.urlopen(req, timeout=600)
 
 
@@ -34,9 +38,16 @@ def list_models(base: str, key: str) -> list[str]:
         return sorted(m["id"] for m in json.load(r).get("data", []))
 
 
-def chat(base: str, key: str, model: str, messages: list[dict], temperature: float) -> str:
+def chat(
+    base: str, key: str, model: str, messages: list[dict], temperature: float
+) -> str:
     """Stream the answer to the terminal and return it."""
-    payload = {"model": model, "messages": messages, "temperature": temperature, "stream": True}
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
     t0, first, parts = time.time(), None, []
     with request(base + "/chat/completions", key, payload) as r:
         for raw in r:
@@ -55,7 +66,9 @@ def chat(base: str, key: str, model: str, messages: list[dict], temperature: flo
     answer = "".join(parts)
     took = time.time() - t0
     wait = (first - t0) if first else took
-    print(f"\n\033[2m[{model} · erste Antwort nach {wait:.1f}s · total {took:.1f}s · ~{len(answer.split())} Wörter]\033[0m")
+    print(
+        f"\n\033[2m[{model} · erste Antwort nach {wait:.1f}s · total {took:.1f}s · ~{len(answer.split())} Wörter]\033[0m"
+    )
     return answer
 
 
@@ -66,15 +79,20 @@ def main():
     ap.add_argument("--temp", type=float, default=0.7)
     args = ap.parse_args()
 
-    key = os.environ.get("APERTUS_API_KEY") or getpass.getpass("API key (hidden): ").strip()
+    key = (
+        os.environ.get("APERTUS_API_KEY")
+        or getpass.getpass("API key (hidden): ").strip()
+    )
     base, model, temp = args.url.rstrip("/"), args.model, args.temp
     system, history = "", []
-    print(f"Chat mit {model} über {base}. /models, /model <name>, /system <text>, /temp <x>, /reset, /quit\n")
+    print(
+        f"Chat mit {model} über {base}. /models, /model <name>, /system <text>, /temp <x>, /reset, /quit\n"
+    )
 
     while True:
         try:
             user = input("\033[1mDu:\033[0m ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             break
         if not user:
@@ -109,7 +127,9 @@ def main():
         messages = ([{"role": "system", "content": system}] if system else []) + history
         print(f"\033[1m{model}:\033[0m ", end="", flush=True)
         try:
-            history.append({"role": "assistant", "content": chat(base, key, model, messages, temp)})
+            history.append(
+                {"role": "assistant", "content": chat(base, key, model, messages, temp)}
+            )
         except urllib.error.HTTPError as e:
             history.pop()
             print(f"\n(HTTP {e.code}: {e.read().decode(errors='replace')[:300]})")

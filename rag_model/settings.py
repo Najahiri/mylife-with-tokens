@@ -1,23 +1,34 @@
 """Set the Apertus API access from the terminal (the UI will offer the same later).
 
-    python -m rag_model.settings          # asks for URL, key (hidden) and model names, then tests the connection
-    python -m rag_model.settings --show   # shows the settings without the key
+python -m rag_model.settings          # asks for URL, key (hidden) and model names, then tests the connection
+python -m rag_model.settings --show   # shows the settings without the key
 """
+
 import argparse
 import getpass
 import time
 
 from haystack.dataclasses import ChatMessage
 
-from rag_model.llm import ROLES, generator, load_settings, public_settings, save_settings
+from rag_model.llm import (
+    ROLES,
+    generator,
+    load_settings,
+    public_settings,
+    save_settings,
+)
 from rag_model import config
 
 
 def list_models() -> list[str]:
     import httpx
+
     s = load_settings()
-    r = httpx.get(s["base_url"].rstrip("/") + "/models", headers={"Authorization": f"Bearer {s['api_key']}"},
-                  timeout=30)
+    r = httpx.get(
+        s["base_url"].rstrip("/") + "/models",
+        headers={"Authorization": f"Bearer {s['api_key']}"},
+        timeout=30,
+    )
     r.raise_for_status()
     return sorted(m["id"] for m in r.json().get("data", []))
 
@@ -27,14 +38,56 @@ def test_connection(verbose: bool = True) -> list[dict]:
     for role in ROLES:
         t0 = time.time()
         try:
-            reply = generator(role, config.load()["llm"]).run(messages=[ChatMessage.from_user("Reply with: ok")])
-            results.append({"role": role, "ok": True, "seconds": round(time.time() - t0, 1),
-                            "message": (reply["replies"][0].text or "")[:80]})
+            reply = generator(role, config.load()["llm"]).run(
+                messages=[ChatMessage.from_user("Reply with: ok")]
+            )
+            results.append(
+                {
+                    "role": role,
+                    "ok": True,
+                    "seconds": round(time.time() - t0, 1),
+                    "message": (reply["replies"][0].text or "")[:80],
+                }
+            )
         except Exception as e:  # show the provider's message as is
-            results.append({"role": role, "ok": False, "seconds": round(time.time() - t0, 1), "message": str(e)[:300]})
+            results.append(
+                {
+                    "role": role,
+                    "ok": False,
+                    "seconds": round(time.time() - t0, 1),
+                    "message": str(e)[:300],
+                }
+            )
+    if load_settings().get("decision_url"):
+        from rag_model.decision import decide
+
+        t0 = time.time()
+        try:
+            result = decide(
+                "Connection test", "Select an option.", ["Option A", "Option B"]
+            )
+            results.append(
+                {
+                    "role": "decision",
+                    "ok": True,
+                    "seconds": round(time.time() - t0, 1),
+                    "message": result["prediction"],
+                }
+            )
+        except Exception as e:
+            results.append(
+                {
+                    "role": "decision",
+                    "ok": False,
+                    "seconds": round(time.time() - t0, 1),
+                    "message": str(e)[:300],
+                }
+            )
     if verbose:
         for r in results:
-            print(f"  {r['role']}: {'ok' if r['ok'] else 'FAILED'} · {r['seconds']} s · {r['message']!r}")
+            print(
+                f"  {r['role']}: {'ok' if r['ok'] else 'FAILED'} · {r['seconds']} s · {r['message']!r}"
+            )
     return results
 
 
@@ -44,10 +97,16 @@ def main():
     args = ap.parse_args()
     if not args.show:
         current = load_settings()
-        ask = lambda label, key: input(f"{label} [{current.get(key, '')}]: ").strip() or current.get(key, "")
-        update = {"base_url": ask("API base URL (OpenAI-compatible, usually ends with /v1)", "base_url"),
-                  "model_queries": ask("Model for search terms (B2)", "model_queries"),
-                  "model_brief": ask("Model for the pitch information (B4)", "model_brief")}
+        ask = lambda label, key: (
+            input(f"{label} [{current.get(key, '')}]: ").strip() or current.get(key, "")
+        )
+        update = {
+            "base_url": ask(
+                "API base URL (OpenAI-compatible, usually ends with /v1)", "base_url"
+            ),
+            "model_queries": ask("Model for search terms (B2)", "model_queries"),
+            "model_brief": ask("Model for the pitch information (B4)", "model_brief"),
+        }
         key = getpass.getpass("API key (hidden, Enter keeps the current one): ").strip()
         if key:
             update["api_key"] = key

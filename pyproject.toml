@@ -6,6 +6,7 @@ dependencies = [
     "fastapi>=0.146.0",
     "haystack-ai>=3.4.0",
     "httpx>=0.28.1",
+    "jsonschema>=4",
     "langdetect>=1.0.9",
     "langdetect-haystack>=1.0.0",
     "nltk>=3.9.1",
