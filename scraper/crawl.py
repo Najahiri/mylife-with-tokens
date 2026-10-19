@@ -11,6 +11,7 @@ import re
 import sqlite3
 import time
 import zlib
+from pathlib import Path
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -167,6 +168,7 @@ async def main():
     sources = [s for s in yaml.safe_load(open(args.sources))["sources"] if s.get("enabled", True)]
     if args.only:
         sources = [s for s in sources if s["name"] in args.only]
+    Path(args.db).parent.mkdir(parents=True, exist_ok=True)   # data/ does not exist in a fresh clone
     db = sqlite3.connect(args.db)
     db.executescript(SCHEMA)
     async with httpx.AsyncClient(headers={"User-Agent": UA}, follow_redirects=True, timeout=30,

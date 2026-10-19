@@ -50,13 +50,15 @@ Then set the Apertus API (base URL, key, models) under Settings in the UI.
 
 ## Build the index yourself
 
-Only needed for other websites or a fresh crawl; embedding is slow without a GPU.
+Only needed for other websites or a fresh crawl.
 
 ```sh
-uv run python scraper/crawl.py sources.yaml data/crawl.sqlite
+uv run python scraper/crawl.py sources.yaml data/crawl.sqlite --max-pages 5000   # pages per website, unless sources.yaml sets max_pages
 uv run python indexing/index.py prepare
 uv run python indexing/embed.py --device cuda --fp16     # on a GPU machine if possible
 uv run python indexing/index.py load
 ```
 
-The search index (Qdrant, local mode) can only be opened by one process: stop the API while indexing.
+Crawling takes hours (one request per second per website). Embedding all chunks takes minutes on a GPU and many
+hours on a CPU (about one chunk per second). The search index (Qdrant, local mode) can only be opened by one process:
+stop the API while indexing.
