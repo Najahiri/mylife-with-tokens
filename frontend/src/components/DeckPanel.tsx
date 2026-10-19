@@ -103,8 +103,8 @@ export function DeckPanel({ items, deck: fields, onDeck, onRemove, locked }: {
                         <div className="absolute top-2 right-2 flex gap-1.5">
                           {info?.kind === "title" && (
                             <SlideAction onClick={() => setEditing(!editing)} visible={!fields.company || editing} primary={!fields.company}
-                                         title={fields.company ? "Edit the title slide" : "Add the company name"}>
-                              <Pencil className="size-3.5" /> {fields.company ? "Edit" : "Add company name"}
+                                         title="Edit the title slide: company, subtitle, speaker, extra slides">
+                              <Pencil className="size-3.5" /> Edit title slide
                             </SlideAction>
                           )}
                           {info?.kind === "item" && (
