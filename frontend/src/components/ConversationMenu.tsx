@@ -57,15 +57,16 @@ export function ConversationMenu({ current, title, disabled, onNew, onOpen, onDe
           {list.data?.sessions.map((s) => (
             <div key={s.id} className="group flex items-center gap-1 rounded-xl transition-colors hover:bg-accent">
               <button type="button" role="menuitem" onClick={() => pick(() => onOpen(s.id))}
-                      className="flex min-w-0 flex-1 items-start gap-2 rounded-xl px-3 py-2 text-left focus-visible:bg-accent focus-visible:outline-none">
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left focus-visible:bg-accent focus-visible:outline-none">
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className={cn("truncate text-sm", s.id === current ? "font-semibold text-secondary" : "text-foreground")}>{s.title}</span>
                   <span className="text-xs text-muted-foreground">
                     {s.items} {s.items === 1 ? "item" : "items"} · {relative(s.updated)}
                   </span>
                 </span>
-                {s.id === current && <Check className="mt-0.5 size-4 shrink-0 text-secondary" />}
               </button>
+              {/* check and trash share the right edge, centred on the row */}
+              {s.id === current && <Check className="size-4 shrink-0 text-secondary" aria-label="current conversation" />}
               {confirming === s.id ? (
                 <button type="button" onClick={() => remove.mutate(s.id)} disabled={remove.isPending}
                         className="animate-zoom mr-1.5 flex shrink-0 items-center gap-1 rounded-full bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:brightness-110">
